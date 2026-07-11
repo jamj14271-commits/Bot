@@ -2,3 +2,4 @@ discord.py
 motor
 python-dotenv
 certifi
+flask
