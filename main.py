@@ -4,9 +4,10 @@ from discord.ui import Button, View, Modal, TextInput
 import os
 import motor.motor_asyncio
 import certifi
+from keep_alive import keep_alive
 
 # ================= CẤU HÌNH CƠ BẢN ================= #
-# ID kênh duyệt bài 
+# ID kênh duyệt bài của bạn
 ADMIN_CHANNEL_ID = 1525386498739015800  
 
 # Bảng Mp theo độ khó
@@ -16,7 +17,7 @@ DIFFICULTY_MP = {
     "insane demon": 5000, "extreme": 10000
 }
 
-# Dữ liệu ID Danh hiệu
+# Dữ liệu ID Danh hiệu của bạn
 TITLES_DATA = {
     "chiến binh try hard": 152548454364,
     "chiến binh đã tốt nghiệp": 152548544903,
@@ -28,14 +29,13 @@ TITLES_DATA = {
 # =================================================== #
 
 # ================= KHỞI TẠO BOT ==================== #
-# (Dòng này đã được đưa lên trên để sửa lỗi NameError)
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# ================= DATABASE ======================== #
+# ================= DATABASE (MONGODB) ============== #
 db_client = None
 db = None
 
@@ -48,7 +48,7 @@ async def on_ready():
     db = db_client['gd_database']
     print(f'Bot {bot.user} đã sẵn sàng hoạt động!')
 
-# Hàm hỗ trợ Database
+# Các hàm hỗ trợ Database
 async def get_user_mp(user_id):
     user = await db.users.find_one({"_id": user_id})
     return user["mp"] if user else 0
@@ -56,7 +56,7 @@ async def get_user_mp(user_id):
 async def add_user_mp(user_id, amount):
     await db.users.update_one({"_id": user_id}, {"$inc": {"mp": amount}}, upsert=True)
 
-# ================= GIAO DIỆN NÚT BẤM ================= #
+# ================= GIAO DIỆN NÚT BẤM DUYỆT BÀI ================= #
 class RejectModal(Modal, title='Lí do từ chối'):
     reason = TextInput(label='Nhập lí do', style=discord.TextStyle.paragraph, placeholder="Ví dụ: Video bị lag, chưa đủ điều kiện beat hardest...")
 
@@ -116,7 +116,7 @@ class ReviewView(View):
             except:
                 pass
                 
-        # Cập nhật lại tin nhắn trong kênh Admin
+        # Cập nhật lại tin nhắn trong kênh Admin (Xóa nút và Embed để gọn gàng)
         await interaction.message.edit(content=f"{msg_admin}\nNgười duyệt: {interaction.user.mention}", view=None, embeds=[])
         await interaction.response.send_message("Duyệt thành công!", ephemeral=True)
 
@@ -125,39 +125,41 @@ class ReviewView(View):
         modal = RejectModal(self.user_id, interaction.message)
         await interaction.response.send_modal(modal)
 
-# ================= CÁC LỆNH BOT ================= #
+# ================= CÁC LỆNH BOT (COMMANDS) ================= #
 
 @bot.command()
 async def duyet(ctx, *, yeu_cau: str = None):
     if not yeu_cau:
-        return await ctx.send("Vui lòng nhập: `!duyet [độ khó]` (lấy MP) hoặc `!duyet [danh hiệu]` (nhận danh hiệu)")
+        return await ctx.send("Vui lòng nhập độ khó hoặc tên danh hiệu!\nVí dụ: `!duyet hard demon` (lấy MP) hoặc `!duyet pro` (nhận danh hiệu)")
     
     yeu_cau = yeu_cau.lower()
+    
+    # Kiểm tra xem yêu cầu thuộc nhóm nào
     is_mp = yeu_cau in DIFFICULTY_MP
     is_role = yeu_cau in TITLES_DATA
 
     if not is_mp and not is_role:
-        return await ctx.send("❌ Yêu cầu không hợp lệ. Vui lòng kiểm tra lại tên độ khó hoặc danh hiệu.")
+        return await ctx.send("❌ Yêu cầu không hợp lệ. Vui lòng gõ đúng độ khó (vd: hard demon) hoặc tên danh hiệu (vd: chiến binh try hard).")
     
     if not ctx.message.attachments:
-        return await ctx.send("📸 Bạn phải gửi kèm video/ảnh minh chứng!")
+        return await ctx.send("📸 Bạn phải gửi kèm theo video gameplay hoặc ảnh chứng minh!")
 
     admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
     if not admin_channel:
         return await ctx.send("Lỗi: Không tìm thấy kênh Admin.")
-        
+
     attachment_url = ctx.message.attachments[0].url
 
-    # TỰ ĐỘNG PHÂN LOẠI MÀU SẮC ĐỂ ADMIN DỄ PHÂN BIỆT
+    # TỰ ĐỘNG PHÂN LOẠI MÀU SẮC ĐỂ ADMIN DỄ PHÂN BIỆT KHI XEM
     if is_role:
-        # Danh hiệu: Màu Vàng Gold
+        # Danh hiệu: Tiêu đề riêng + Màu Vàng Gold sang chảnh
         embed = discord.Embed(title="⭐ YÊU CẦU CẤP DANH HIỆU", color=discord.Color.gold())
         reward_name = "Danh hiệu"
         reward_value = yeu_cau.title()
         req_type = "role"
         reward_id = TITLES_DATA[yeu_cau]
     else:
-        # MP: Màu Xanh Dương
+        # MP: Tiêu đề riêng + Màu Xanh Dương cày cuốc
         embed = discord.Embed(title="💎 YÊU CẦU CỘNG MP", color=discord.Color.blue())
         reward_name = "Số MP"
         reward_value = f"{DIFFICULTY_MP[yeu_cau]} Mp"
@@ -167,12 +169,13 @@ async def duyet(ctx, *, yeu_cau: str = None):
     embed.add_field(name="Người gửi", value=ctx.author.mention, inline=True)
     embed.add_field(name="Yêu cầu", value=yeu_cau.title(), inline=True)
     embed.add_field(name="Loại thưởng", value=reward_name, inline=True)
-    embed.add_field(name="Phần thưởng", value=reward_value, inline=False)
+    embed.add_field(name="Phần thưởng dự kiến", value=reward_value, inline=False)
     embed.set_image(url=attachment_url)
+    embed.add_field(name="Link File/Video", value=attachment_url, inline=False)
 
     view = ReviewView(ctx.author.id, req_type, yeu_cau, reward_id)
     await admin_channel.send(embed=embed, view=view)
-    await ctx.send("✅ Yêu cầu đã được gửi đến Admin. Chờ duyệt nhé!")
+    await ctx.send("✅ Đã gửi yêu cầu và video cho Admin kiểm tra. Bạn chờ kết quả nhé!")
 
 @bot.command()
 async def bxh(ctx):
@@ -206,5 +209,7 @@ async def bxh(ctx):
 
     await ctx.send(embed=embed)
 
+# ================= KHỞI CHẠY BOT (LUÔN DƯỚI CÙNG) ==================== #
+keep_alive()  # Kích hoạt trang web giả để đánh lừa Render giữ kết nối mở port 8080
 bot.run(os.getenv('DISCORD_TOKEN'))
     
