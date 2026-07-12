@@ -1,4 +1,4 @@
-import discord
+Import discord
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput
 import os
@@ -231,8 +231,7 @@ class ReviewView(View):
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         modal = RejectModal(self.user_id, interaction.message)
         await interaction.response.send_modal(modal)
-
-# ================= CÁC LỆNH BOT (COMMANDS) ================= #
+        # ================= CÁC LỆNH BOT (COMMANDS) ================= #
 
 @bot.command()
 async def menu(ctx):
@@ -442,4 +441,23 @@ async def bxh(ctx):
     if a_than:
         embed.add_field(name="👑 Á Thần (100,000+ Mp)", value="\n".join(a_than), inline=False)
     if god:
-        embed.add_field(name="⚡ God (50,000 - 99,999 Mp)", 
+        embed.add_field(name="⚡ God (50,000 - 99,999 Mp)", value="\n".join(god), inline=False)
+    if pro:
+        embed.add_field(name="⚔️ Pro (10,000 - 49,999 Mp)", value="\n".join(pro), inline=False)
+    if thuong:
+        embed.add_field(name="🌱 Thường (< 10,000 Mp)", value="\n".join(thuong), inline=False)
+
+    await ctx.send(embed=embed)
+
+# ================= CHẠY BOT ================= #
+if __name__ == "__main__":
+    # Kích hoạt web server để giữ bot online 24/7 (nếu bạn dùng Uptimerobot / Render)
+    keep_alive() 
+    
+    # Lấy token từ biến môi trường
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
+            
