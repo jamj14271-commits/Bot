@@ -11,7 +11,7 @@ from keep_alive import keep_alive
 ADMIN_CHANNEL_ID = 1525386498739015800  
 
 # ID kênh nhận Report gian lận (MỚI)
-REPORT_CHANNEL_ID = 1525494977554288732
+REPORT_CHANNEL_ID = 1525662263502176306
 
 # Bảng Mp theo độ khó
 DIFFICULTY_MP = {
@@ -274,3 +274,4 @@ async def bxh(ctx):
 # ================= KHỞI CHẠY BOT (LUÔN DƯỚI CÙNG) ==================== #
 keep_alive()  # Kích hoạt trang web giả để đánh lừa Render giữ kết nối mở port 8080
 bot.run(os.getenv('DISCORD_TOKEN'))
+        
