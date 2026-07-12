@@ -16,7 +16,7 @@ WELCOME_CHANNEL_ID = 1525492114564317204
 DIFFICULTY_MP = {
     "easy": 5, "normal": 10, "hard": 25, "harder": 50, "insane": 100,
     "easy demon": 250, "medium demon": 500, "hard demon": 1000,
-    "insane demon": 5000, "extreme": 10000
+    "insane demon": 5000, "extreme demon": 10000
 }
 
 TITLES_DATA = {
