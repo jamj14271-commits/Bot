@@ -8,7 +8,6 @@ from keep_alive import keep_alive
 
 # ================= CẤU HÌNH CƠ BẢN ================= #
 ADMIN_CHANNEL_ID = 1525386498739015800  
-# ĐÃ SỬA LẠI ID KÊNH REPORT MỚI CỦA BẠN Ở ĐÂY:
 REPORT_CHANNEL_ID = 1525662263502176306
 
 DIFFICULTY_MP = {
@@ -98,14 +97,12 @@ class ReportActionModal(Modal):
 
         embed = self.message_to_edit.embeds[0]
         
-        # Khởi tạo khung tin nhắn DM cực đẹp gửi cho người báo cáo
         dm_embed = discord.Embed(timestamp=interaction.message.created_at)
 
         if self.action_type == 'approve':
             embed.title = "✅ BÁO CÁO ĐÃ XỬ LÝ"
             embed.color = discord.Color.green()
             
-            # Setup DM gửi cho người report (Duyệt)
             dm_embed.title = "✅ BÁO CÁO CỦA BẠN ĐÃ ĐƯỢC XỬ LÝ"
             dm_embed.color = discord.Color.green()
             dm_embed.description = f"Cảm ơn bạn đã báo cáo. Admin đã xử lý vi phạm của {self.reported_mention}."
@@ -115,26 +112,21 @@ class ReportActionModal(Modal):
             embed.title = "❌ BÁO CÁO BỊ TỪ CHỐI"
             embed.color = discord.Color.dark_gray()
             
-            # Setup DM gửi cho người report (Từ chối)
             dm_embed.title = "❌ BÁO CÁO BỊ TỪ CHỐI"
             dm_embed.color = discord.Color.red()
             dm_embed.description = f"Rất tiếc, báo cáo của bạn về {self.reported_mention} không được duyệt."
             dm_embed.add_field(name="Lý do từ Admin:", value=reason_text, inline=False)
 
-        # Cập nhật Embed trong kênh Report Admin
         embed.add_field(name="Người xử lý:", value=admin_mention, inline=False)
         embed.add_field(name="Ghi chú của Admin:", value=reason_text, inline=False)
 
-        # Xóa các nút bấm và cập nhật tin nhắn Admin
         await self.message_to_edit.edit(embed=embed, view=None)
         await interaction.response.send_message("Đã ghi nhận kết quả xử lý!", ephemeral=True)
         
-        # TIẾN HÀNH GỬI DM CHO NGƯỜI BÁO CÁO KÈM LÝ DO
         if reporter:
             try:
                 await reporter.send(embed=dm_embed)
             except discord.Forbidden:
-                # Nếu họ tắt nhận tin nhắn riêng, bot sẽ bỏ qua để không bị lỗi
                 pass
 
 class ReportReviewView(View):
@@ -220,6 +212,40 @@ class ReviewView(View):
 
 
 # ================= CÁC LỆNH BOT (COMMANDS) ================= #
+
+# LỆNH CHỈNH SỬA MP DÀNH CHO ADMIN
+@bot.command(name="setmp")
+@commands.has_permissions(administrator=True)
+async def set_mp(ctx, member: discord.Member = None, amount: int = None):
+    if member is None or amount is None:
+        return await ctx.send("❌ Sai cú pháp! Dùng: `!setmp @người_chơi số_điểm`")
+    if amount < 0:
+        return await ctx.send("❌ Số Mp không thể nhỏ hơn 0.")
+    
+    await db.users.update_one({"_id": member.id}, {"$set": {"mp": amount}}, upsert=True)
+    await ctx.send(f"✅ Đã chỉnh sửa! {member.mention} hiện có **{amount}** Mp.")
+
+@bot.command(name="addmp")
+@commands.has_permissions(administrator=True)
+async def add_mp_cmd(ctx, member: discord.Member = None, amount: int = None):
+    if member is None or amount is None:
+        return await ctx.send("❌ Sai cú pháp! Dùng: `!addmp @người_chơi số_điểm` (Có thể dùng số âm để trừ, ví dụ: -50)")
+    
+    await add_user_mp(member.id, amount)
+    new_mp = await get_user_mp(member.id)
+    action = "cộng thêm" if amount > 0 else "trừ đi"
+    await ctx.send(f"✅ Đã {action} **{abs(amount)}** Mp cho {member.mention}. Tổng Mp hiện tại: **{new_mp}**.")
+
+# Bắt lỗi nếu người dùng không có quyền Admin cố tình xài lệnh SetMp/AddMp
+@set_mp.error
+@add_mp_cmd.error
+async def admin_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ Bạn không có quyền Administrator để dùng lệnh này!", delete_after=5)
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ Sai cú pháp hoặc bạn chưa tag đúng người. Hãy kiểm tra lại!", delete_after=5)
+
+
 @bot.command(name="report")
 async def report_user(ctx, member: discord.Member = None, *, reason: str = None):
     try:
@@ -329,4 +355,4 @@ async def bxh(ctx):
 
 keep_alive()  
 bot.run(os.getenv('DISCORD_TOKEN'))
-    
+        
