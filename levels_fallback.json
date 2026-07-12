@@ -1,0 +1,44 @@
+[
+  {
+    "name": "The Nightmare",
+    "creator": "Jax",
+    "do_kho": "Easy Demon",
+    "phan_loai": "dễ",
+    "description": "Level Cube cơ bản, nhịp độ chậm, cực kỳ thích hợp để luyện tập các bước nhảy căn bản."
+  },
+  {
+    "name": "Clubstep",
+    "creator": "RobTop",
+    "do_kho": "Easy Demon",
+    "phan_loai": "tầm trung",
+    "description": "Level huyền thoại kết hợp giữa Cube và Ship, đòi hỏi kỹ năng điều khiển tàu ổn định."
+  },
+  {
+    "name": "Lightning Road",
+    "creator": "Timeless",
+    "do_kho": "Easy Demon",
+    "phan_loai": "khó",
+    "description": "Kết hợp nhiều đoạn chuyển đổi nhanh giữa UFO và Wave, yêu cầu phản xạ tốt."
+  },
+  {
+    "name": "Decode",
+    "creator": "Rek3dge",
+    "do_kho": "Easy Demon",
+    "phan_loai": "tầm trung",
+    "description": "Nổi tiếng với các đoạn Wave và Robot nhịp điệu cao, rất tốt để cải thiện khả năng bấm liên tục."
+  },
+  {
+    "name": "X",
+    "creator": "TriAxis",
+    "do_kho": "Easy Demon",
+    "phan_loai": "dễ",
+    "description": "Tập trung vào phần Robot và UFO với các cổng nhảy được sắp xếp sáng tạo."
+  },
+  {
+    "name": "Deadlocked",
+    "creator": "RobTop",
+    "do_kho": "Easy Demon",
+    "phan_loai": "khó",
+    "description": "Đỉnh cao của độ khó với các đoạn Wave tốc độ cao và kỹ thuật Ship phức tạp."
+  }
+]
