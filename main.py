@@ -28,11 +28,14 @@ TITLES_DATA = {
     "vua cày điểm": 152549739299
 }
 
-# Cấu hình Gemini API
+# ================= CẤU HÌNH GEMINI API MỚI ================= #
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-# =================================================== #
+    # Cấu hình model sử dụng chuẩn chung, không ép kiểu API v1beta
+    model = genai.GenerativeModel('gemini-1.5-flash') 
+# ========================================================== #
+
 
 # ================= KHỞI TẠO BOT ==================== #
 intents = discord.Intents.default()
@@ -380,7 +383,7 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
     if GEMINI_API_KEY:
         try:
             # Gọi bản Flash-Lite 8B có giới hạn request cực cao
-            model = genai.GenerativeModel('gemini-pro')
+            
 
             prompt = f"Tôi đang chơi Geometry Dash. Hãy đề xuất cho tôi DUY NHẤT 1 level thuộc độ khó {do_kho} ở mức {phan_loai} của độ khó đó. Tôi muốn {yeu_cau} {ky_nang}. Trả lời thật ngắn gọn: Tên level, người tạo, ID (nếu có thể), và giải thích 2-3 câu tại sao nó hợp với tôi."
             
