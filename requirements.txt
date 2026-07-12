@@ -1,6 +1,6 @@
 discord.py
 motor
 certifi
-google-generativeai>=0.8.0
+google-generativeai
 flask
 python-dotenv
