@@ -58,7 +58,7 @@ async def on_ready():
     db = db_client['gd_database']
     print(f'Bot {bot.user} đã sẵn sàng hoạt động!')
 
-# ================= CÁC HÀM TIỆN ÍCH & LOGIC DANH HIỆU ================= #
+# ================= CÁC HÀM TIỆN ÍCH & LOGIC ================= #
 async def get_user_mp(user_id):
     user = await db.users.find_one({"_id": user_id})
     return user["mp"] if user else 0
@@ -167,8 +167,7 @@ async def on_message(message):
             return 
         except discord.Forbidden: pass
     await bot.process_commands(message)
-
-# ================= GIAO DIỆN NÚT BẤM REPORT ================= #
+            # ================= GIAO DIỆN NÚT BẤM REPORT ================= #
 class PunishmentModal(Modal):
     def __init__(self, action_type, reporter_id, reported_member, message_to_edit):
         titles = {"mute": "Khoá Chat", "ban": "Ban Khỏi Server", "deduct_mp": "Trừ MP"}
@@ -185,11 +184,11 @@ class PunishmentModal(Modal):
             self.val_input = TextInput(label='Số MP cần trừ', placeholder="Ví dụ: 100", required=True)
             self.add_item(self.val_input)
 
-        self.reason = TextInput(label='Ghi chú cho người report', style=discord.TextStyle.paragraph, placeholder="Nhập ghi chú...")
+        self.reason = TextInput(label='Ghi chú cho người report', style=discord.TextStyle.paragraph, placeholder="Nhập ghi chú (nếu có)...", required=False)
         self.add_item(self.reason)
 
     async def on_submit(self, interaction: discord.Interaction):
-        reason_text = self.reason.value
+        reason_text = self.reason.value or "Không có ghi chú thêm."
         action_msg = ""
 
         try:
@@ -209,7 +208,7 @@ class PunishmentModal(Modal):
             return await interaction.response.send_message(f"Lỗi khi thực hiện hình phạt: {e}", ephemeral=True)
 
         embed = self.message_to_edit.embeds[0]
-        embed.title = "✅ BÁO CÁO ĐĐƯỢC XỬ LÝ"
+        embed.title = "✅ BÁO CÁO ĐÃ ĐƯỢC XỬ LÝ"
         embed.color = discord.Color.green()
         embed.add_field(name="Hành động của Admin:", value=action_msg, inline=False)
         embed.add_field(name="Ghi chú:", value=reason_text, inline=False)
@@ -224,6 +223,34 @@ class PunishmentModal(Modal):
             except discord.Forbidden: pass
 
         await interaction.response.send_message("Đã thi hành án phạt thành công!", ephemeral=True)
+
+
+class ReportRejectModal(Modal, title='Từ Chối Báo Cáo'):
+    reason = TextInput(label='Lý do từ chối', style=discord.TextStyle.paragraph, placeholder="Nhập lý do báo cáo này bị từ chối...", required=True)
+
+    def __init__(self, reporter_id, message_to_edit):
+        super().__init__()
+        self.reporter_id = reporter_id
+        self.message_to_edit = message_to_edit
+
+    async def on_submit(self, interaction: discord.Interaction):
+        embed = self.message_to_edit.embeds[0]
+        embed.title = "❌ BÁO CÁO BỊ TỪ CHỐI"
+        embed.color = discord.Color.red()
+        embed.add_field(name="Người xử lý:", value=interaction.user.mention, inline=False)
+        embed.add_field(name="Lý do từ chối:", value=self.reason.value, inline=False)
+        
+        await self.message_to_edit.edit(embed=embed, view=None)
+
+        reporter = await bot.fetch_user(self.reporter_id)
+        if reporter:
+            dm_embed = discord.Embed(title="❌ BÁO CÁO BỊ TỪ CHỐI", color=discord.Color.red(), description="Báo cáo vi phạm của bạn đã bị Admin từ chối.")
+            dm_embed.add_field(name="Lý do:", value=self.reason.value, inline=False)
+            try: await reporter.send(embed=dm_embed)
+            except discord.Forbidden: pass
+
+        await interaction.response.send_message("Đã từ chối báo cáo!", ephemeral=True)
+
 
 class ReportActionView(View):
     def __init__(self, reporter_id, reported_member, message_to_edit):
@@ -244,6 +271,7 @@ class ReportActionView(View):
     async def btn_mp(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(PunishmentModal("deduct_mp", self.reporter_id, self.reported_member, self.message_to_edit))
 
+
 class ReportReviewView(View):
     def __init__(self, reporter_id, reported_member):
         super().__init__(timeout=None)
@@ -254,10 +282,16 @@ class ReportReviewView(View):
     async def approve_btn(self, interaction: discord.Interaction, button: Button):
         view = ReportActionView(self.reporter_id, self.reported_member, interaction.message)
         await interaction.response.send_message("Chọn hình phạt bạn muốn áp dụng:", view=view, ephemeral=True)
+        
+    @discord.ui.button(label="Từ chối (Kèm lý do)", style=discord.ButtonStyle.red, custom_id="btn_rep_reject")
+    async def reject_btn(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(ReportRejectModal(self.reporter_id, interaction.message))
+
 
 # ================= GIAO DIỆN NÚT BẤM DUYỆT BÀI ================= #
-class RejectModal(Modal, title='Lí do từ chối'):
+class RejectModal(Modal, title='Lí do từ chối bài duyệt'):
     reason = TextInput(label='Nhập lí do', style=discord.TextStyle.paragraph)
+    
     def __init__(self, user_id, message_to_edit, item_name):
         super().__init__()
         self.user_id = user_id
@@ -363,35 +397,67 @@ class ReviewView(View):
     @discord.ui.button(label="Từ chối", style=discord.ButtonStyle.red, custom_id="btn_reject")
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RejectModal(self.user_id, interaction.message, self.item_name))
-
-# ================= CÁC LỆNH BOT (COMMANDS) ================= #
+                    # ================= CÁC LỆNH BOT (COMMANDS) ================= #
 @bot.command()
 async def menu(ctx):
     is_admin = ctx.author.guild_permissions.administrator
-    embed = discord.Embed(title="📚 BẢNG HƯỚNG DẪN SỬ DỤNG LỆNH VÀ DANH HIỆU", color=discord.Color.blurple())
+    embed = discord.Embed(
+        title="📚 HƯỚNG DẪN TỔNG HỢP LỆNH BOT", 
+        description="Chào mừng bạn! Dưới đây là danh sách các tính năng được thiết kế để bạn có trải nghiệm tốt nhất trên Server.",
+        color=discord.Color.blurple()
+    )
     
-    embed.add_field(name="1️⃣ Lệnh Duyệt (`!duyet`)", value="Dùng `!duyet [độ khó/event/daily/danh hiệu]` kèm video/ảnh để lấy MP hoặc Danh hiệu.", inline=False)
-    
-    embed.add_field(name="💡 Tự động hóa Danh Hiệu Demon", value="• Duyệt **Easy Demon** ➔ Nhận ngay danh hiệu `Chiến Binh Try Hard`\n• Duyệt **Medium Demon** ➔ Nhận ngay danh hiệu `Chiến Binh Đã Tốt Nghiệp`\n• Duyệt **Hard Demon** ➔ Nhận ngay danh hiệu `Pro`", inline=False)
-    
+    # 1. Hệ thống duyệt bài & Cày MP
     embed.add_field(
-        name="👑 3 DANH HIỆU TỐI THƯỢNG (TỰ ĐỘNG HIỂN THỊ TRÊN BXH)", 
-        value="• **Vua Cày Điểm**: Tự động trao cho người đứng **Top 1 MP** server. Hãy chăm chỉ cày level và gõ `!duyet` độ khó/event/daily để tích điểm vượt Top 1 cũ.\n"
-              "• **Vua Hardest**: Dành cho người beat được level khó nhất server hiện tại. Gõ lệnh `!duyet vua hardest` kèm video bằng chứng để thách thức danh hiệu.\n"
-              "• **Vua Try Hard**: Yêu cầu chuỗi tiến trình tăng dần (Hardest 1 < 2 < 3 < 4 < 5). Mỗi lần lập kỷ lục mới, gõ `!duyet vua try hard`. Cần được Admin duyệt **5 lần liên tiếp**. Nếu bị từ chối chỉ 1 lần, chuỗi sẽ bị **reset về 0** và phải cày lại từ đầu!", 
+        name="💎 1. HỆ THỐNG DUYỆT BÀI & ĐIỂM MP", 
+        value="• `!duyet [độ khó/event/daily/danh hiệu]`\n"
+              "📌 *Gắn kèm video/ảnh làm bằng chứng để Admin cấp MP cho bạn.*\n"
+              "• `!bxh` - Xem Bảng Xếp Hạng MP toàn server hiện tại.", 
         inline=False
     )
     
-    embed.add_field(name="2️⃣ Lệnh Sự Kiện", value="`!daily` hoặc `!event`: Xem ID level sự kiện đang diễn ra.", inline=True)
-    embed.add_field(name="3️⃣ Gợi ý từ AI", value="`!dexuatlevel [độ khó] [dễ/khó] [né/cần] [kỹ năng]` - Gemini gợi ý level.", inline=True)
-    embed.add_field(name="4️⃣ Bảng Xếp Hạng", value="`!bxh`: Xem bảng xếp hạng điểm MP toàn server.", inline=True)
-    embed.add_field(name="5️⃣ Tố Cáo Vi Phạm", value="`!report @user [lý do]`: Tố cáo kèm bằng chứng.", inline=True)
-    embed.add_field(name="6️⃣ Quản Lý Danh Hiệu Cá Nhân", value="`!listdanhhieu`: Xem các danh hiệu bạn đang sở hữu.\n`!setdanhhieu [tên]`: Trang bị danh hiệu hiển thị lên BXH.\n`!editdanhhieu [an/hien]`: Ẩn hoặc Hiện danh hiệu của mình trên BXH.", inline=False)
+    # 2. Danh hiệu Tự động & Tối thượng
+    embed.add_field(
+        name="🎖️ 2. HỆ THỐNG DANH HIỆU DEMON (Tự động nhận)", 
+        value="• Duyệt **Easy Demon** ➔ Nhận ngay `Chiến Binh Try Hard`\n"
+              "• Duyệt **Medium Demon** ➔ Nhận ngay `Chiến Binh Đã Tốt Nghiệp`\n"
+              "• Duyệt **Hard Demon** ➔ Nhận ngay `Pro`", 
+        inline=False
+    )
     
+    embed.add_field(
+        name="👑 3. CÁC NGÔI VỊ TỐI THƯỢNG CỦA SERVER", 
+        value="🥇 **Vua Cày Điểm**: Tự động phong tước cho người đứng **Top 1 MP**.\n"
+              "🏆 **Vua Hardest**: Thách thức Level khó nhất Server. Lệnh `!duyet vua hardest`.\n"
+              "🔥 **Vua Try Hard**: Đòi hỏi chuỗi 5 Hardest liên tiếp độ khó tăng dần. Mỗi kỷ lục dùng `!duyet vua try hard`. *(Lưu ý: Bị Admin từ chối 1 lần sẽ mất toàn bộ chuỗi!)*", 
+        inline=False
+    )
+    
+    # 3. Quản lý Tủ đồ & Danh hiệu cá nhân
+    embed.add_field(
+        name="🎒 4. QUẢN LÝ DANH HIỆU CÁ NHÂN", 
+        value="• `!listdanhhieu`: Xem danh hiệu bạn đang cất trong tủ.\n"
+              "• `!setdanhhieu [tên]`: Trang bị danh hiệu để hiển thị lên BXH.\n"
+              "• `!editdanhhieu [an/hien]`: Bật/Tắt hiển thị danh hiệu.", 
+        inline=False
+    )
+
+    # 4. Tiện ích: Sự kiện, AI, Báo cáo
+    embed.add_field(name="🎯 Sự kiện GD", value="`!daily` hoặc `!event`\nXem mục tiêu để cày thêm MP.", inline=True)
+    embed.add_field(name="🤖 AI Gợi ý (⚠️ ĐANG LỖI)", value="`!dexuatlevel` hiện đang bảo trì và tạm thời không thể sử dụng.", inline=True)
+    embed.add_field(name="🚨 Tố cáo vi phạm", value="`!report @user [lý do]`\nKèm theo ảnh bằng chứng.", inline=True)
+    
+    # 5. Khu vực cho Admin
     if is_admin:
-        embed.add_field(name="🛠️ Lệnh Admin", value="`!setmp @user [số]` - Cài đặt điểm\n`!addmp @user [số]` - Cộng/Trừ điểm\n`!thongbao [event/daily] [ID]` - Gửi báo sự kiện", inline=False)
+        embed.add_field(
+            name="🛠️ 5. LỆNH DÀNH CHO ADMIN", 
+            value="• `!setmp @user [số]` - Đặt lại điểm gốc cho Member\n"
+                  "• `!addmp @user [số]` - Cộng/Trừ thẳng điểm MP\n"
+                  "• `!thongbao [event/daily] [ID]` - Cập nhật Sự kiện GD", 
+            inline=False
+        )
         
-    embed.set_footer(text="Lưu ý: Các danh hiệu thường cần dùng !setdanhhieu thì mới hiện lên bảng xếp hạng!")
+    embed.set_footer(text="💡 Mẹo: Nhớ gửi kèm Hình ảnh/Video mỗi khi dùng !report hoặc !duyet nhé!")
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -432,17 +498,17 @@ async def show_event(ctx):
 @bot.command()
 async def duyet(ctx, *, yeu_cau: str = None):
     if not yeu_cau:
-        return await ctx.send("❌ Nhập độ khó, event/daily hoặc tên danh hiệu! VD: `!duyet daily` hoặc `!duyet vua try hard`")
+        return await ctx.send("❌ Vui lòng nhập độ khó, event/daily hoặc tên danh hiệu! VD: `!duyet daily` hoặc `!duyet vua try hard`")
     
     if not ctx.message.attachments:
-        return await ctx.send("📸 Bạn phải gửi kèm theo video/ảnh chứng minh!")
+        return await ctx.send("📸 Bạn phải gửi kèm theo video/ảnh chứng minh vào tin nhắn này nhé!")
 
     yeu_cau = yeu_cau.lower()
     is_mp = yeu_cau in DIFFICULTY_MP
     is_role = yeu_cau in TITLES_DATA
     
     if not is_mp and not is_role:
-        return await ctx.send("❌ Yêu cầu không hợp lệ.")
+        return await ctx.send("❌ Yêu cầu không hợp lệ. Vui lòng check lại cú pháp.")
 
     if yeu_cau in ["daily", "event"]:
         daily_valid, event_valid = await check_event_daily_validity()
@@ -453,71 +519,27 @@ async def duyet(ctx, *, yeu_cau: str = None):
     attachment_url = ctx.message.attachments[0].url
 
     if is_role:
-        embed = discord.Embed(title="⭐ YÊU CẦU CẤP DANH HIỆU", color=discord.Color.gold())
+        embed = discord.Embed(title="⭐ YÊU CẦU DUYỆT DANH HIỆU", color=discord.Color.gold())
         req_type, reward_name, reward_value, reward_id = "role", "Danh hiệu", yeu_cau.title(), TITLES_DATA[yeu_cau]
     else:
-        embed = discord.Embed(title="💎 YÊU CẦU CỘNG MP", color=discord.Color.blue())
-        req_type, reward_name, reward_value, reward_id = "mp", "MP", f"{DIFFICULTY_MP[yeu_cau]}", DIFFICULTY_MP[yeu_cau]
+        embed = discord.Embed(title="💎 YÊU CẦU DUYỆT ĐIỂM MP", color=discord.Color.blue())
+        req_type, reward_name, reward_value, reward_id = "mp", "Điểm MP", f"+{DIFFICULTY_MP[yeu_cau]} MP", DIFFICULTY_MP[yeu_cau]
 
-    embed.add_field(name="Người gửi", value=ctx.author.mention)
-    embed.add_field(name="Yêu cầu", value=reward_value)
+    embed.add_field(name="👤 Người gửi", value=ctx.author.mention, inline=True)
+    embed.add_field(name="🎁 Loại thưởng", value=f"**{reward_name}**", inline=True)
+    embed.add_field(name="✨ Phần thưởng", value=f"**{reward_value}**", inline=True)
+    embed.add_field(name="📝 Yêu cầu ban đầu", value=yeu_cau.title(), inline=False)
+    embed.add_field(name="🔗 Bằng chứng", value=f"[Nhấn vào đây để xem toàn màn hình]({attachment_url})", inline=False)
+    
     embed.set_image(url=attachment_url)
 
     view = ReviewView(ctx.author.id, req_type, yeu_cau, reward_id)
     await admin_channel.send(embed=embed, view=view)
-    await ctx.send("✅ Đã gửi bài duyệt cho Admin!")
-
-# ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
+    await ctx.send("✅ Đã gửi bài của bạn cho Admin xét duyệt. Hãy kiên nhẫn chờ đợi nhé!")
+    # ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
 @bot.command()
-@commands.cooldown(1, 10, commands.BucketType.user)
-async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: str = None, *, ky_nang: str = None):
-    if not all([do_kho, phan_loai, yeu_cau, ky_nang]):
-        embed = discord.Embed(title="❌ Sai cú pháp lệnh Đề Xuất", color=discord.Color.red())
-        embed.description = "**Cách dùng đúng:**\n`!dexuatlevel [độ khó] [dễ/tầm trung/khó] [né/cần] [kỹ năng]`\n\n**Ví dụ:**\n`!dexuatlevel \"Hard Demon\" dễ cần \"luyện tập wave và ship\"`"
-        return await ctx.send(embed=embed)
-    
-    status_msg = await ctx.send("⏳ *Đang phân tích dữ liệu và tìm level phù hợp cho bạn...*")
-    
-    if GEMINI_API_KEY:
-        try:
-            prompt = f"Tôi đang chơi Geometry Dash. Hãy đề xuất cho tôi DUY NHẤT 1 level thuộc độ khó {do_kho} ở mức {phan_loai} của độ khó đó. Tôi muốn {yeu_cau} {ky_nang}. Trả lời thật ngắn gọn: Tên level, người tạo, ID (nếu có thể), và giải thích 2-3 câu tại sao nó hợp với tôi."
-            response = await model.generate_content_async(prompt)
-            
-            embed = discord.Embed(title="🤖 Gemini Đề Xuất Cho Bạn", description=response.text, color=discord.Color.green())
-            embed.set_footer(text="Được tạo tự động bởi AI (Google Gemini)")
-            await status_msg.delete()
-            return await ctx.send(embed=embed)
-            
-        except Exception as e:
-            if "429" in str(e):
-                return await status_msg.edit(content="⚠️ *Bot đang bị quá tải request từ Google. Vui lòng thử lại sau 1 phút nhé!*")
-            else: pass 
-
-    try:
-        with open("levels_fallback.json", "r", encoding="utf-8") as f:
-            levels_db = json.load(f)
-            
-        suggested_level = next((lvl for lvl in levels_db if lvl["do_kho"].lower() == do_kho.lower() and lvl["phan_loai"].lower() == phan_loai.lower()), None)
-                
-        await status_msg.delete()
-        if suggested_level:
-            embed = discord.Embed(title="📁 Đề Xuất Từ Thư Viện", color=discord.Color.orange())
-            embed.add_field(name="Tên Level", value=f"**{suggested_level['name']}** by {suggested_level['creator']}", inline=False)
-            embed.add_field(name="ID", value=suggested_level.get('id', 'Không rõ'), inline=True)
-            embed.add_field(name="Mô tả", value=suggested_level['description'], inline=False)
-            embed.set_footer(text="Hệ thống AI tạm bận, sử dụng dữ liệu gợi ý cục bộ.")
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send("❌ Hiện tại AI đang quá tải và thư viện cục bộ chưa có level nào khớp hoàn toàn với yêu cầu của bạn.")
-
-    except FileNotFoundError:
-        if status_msg: await status_msg.delete()
-        await ctx.send("❌ Hệ thống AI hiện không khả dụng và file dữ liệu dự phòng không tồn tại.")
-
-@dexuatlevel.error
-async def dexuatlevel_error(ctx, error):
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.send(f"⏳ Đừng spam nhé! Hãy đợi **{int(error.retry_after)} giây** nữa mới được dùng lại lệnh này.", delete_after=5)
+async def dexuatlevel(ctx, *args):
+    await ctx.send("❌ **Tính năng AI gợi ý level (`!dexuatlevel`) hiện đang bị lỗi và được tạm thời vô hiệu hóa để bảo trì. Mong các bạn thông cảm và quay lại sau nhé!**")
 
 # ====== LỆNH QUẢN LÝ DANH HIỆU ====== #
 @bot.command()
@@ -550,18 +572,23 @@ async def editdanhhieu(ctx, trang_thai: str = None):
 async def report(ctx, member: discord.Member = None, *, reason: str = None):
     try: await ctx.message.delete()
     except discord.Forbidden: pass 
-    if not member or not reason: return await ctx.send("❌ Dùng: `!report @user lý do`", delete_after=5)
+    if not member or not reason: return await ctx.send("❌ Cú pháp đúng: `!report @user [lý do]`", delete_after=5)
 
     report_channel = bot.get_channel(REPORT_CHANNEL_ID)
-    embed = discord.Embed(title="🚨 BÁO CÁO VI PHẠM", color=discord.Color.red())
-    embed.add_field(name="Bị cáo", value=member.mention)
-    embed.add_field(name="Lý do", value=reason)
-    embed.add_field(name="Người gửi", value=ctx.author.mention)
+    embed = discord.Embed(title="🚨 BÁO CÁO VI PHẠM TỪ NGƯỜI CHƠI", color=discord.Color.red())
+    embed.add_field(name="👤 Người bị tố cáo", value=member.mention, inline=True)
+    embed.add_field(name="🕵️ Người gửi", value=ctx.author.mention, inline=True)
+    embed.add_field(name="📝 Lý do vi phạm", value=f"**{reason}**", inline=False)
     
     files = [await a.to_file() for a in ctx.message.attachments] if ctx.message.attachments else []
+    if files:
+        embed.set_footer(text="Có tệp tin/hình ảnh đính kèm trong báo cáo này.")
+    else:
+        embed.set_footer(text="⚠️ Báo cáo không có hình ảnh/video bằng chứng.")
+
     view = ReportReviewView(ctx.author.id, member)
     await report_channel.send(embed=embed, files=files, view=view)
-    await ctx.send(f"✅ Đã báo cáo {member.display_name}!", delete_after=5)
+    await ctx.send(f"✅ Đã gửi báo cáo vi phạm đối với {member.display_name}! Admin sẽ xem xét sớm nhất.", delete_after=5)
 
 @bot.command()
 async def bxh(ctx):
@@ -635,4 +662,3 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
-                      
