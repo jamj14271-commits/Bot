@@ -8,7 +8,8 @@ from keep_alive import keep_alive
 
 # ================= CẤU HÌNH CƠ BẢN ================= #
 ADMIN_CHANNEL_ID = 1525386498739015800  
-REPORT_CHANNEL_ID = 1525494977554288732
+# ĐÃ SỬA LẠI ID KÊNH REPORT MỚI CỦA BẠN Ở ĐÂY:
+REPORT_CHANNEL_ID = 1525662263502176306
 
 DIFFICULTY_MP = {
     "easy": 5, "normal": 10, "hard": 25, "harder": 50, "insane": 100,
@@ -153,7 +154,7 @@ class ReportReviewView(View):
         await interaction.response.send_modal(modal)
 
 
-# ================= GIAO DIỆN NÚT BẤM DUYỆT BÀI (KHÔNG ĐỔI) ================= #
+# ================= GIAO DIỆN NÚT BẤM DUYỆT BÀI ================= #
 class RejectModal(Modal, title='Lí do từ chối'):
     reason = TextInput(label='Nhập lí do', style=discord.TextStyle.paragraph, placeholder="Ví dụ: Video bị lag...")
 
@@ -247,7 +248,7 @@ async def report_user(ctx, member: discord.Member = None, *, reason: str = None)
         
         await ctx.send(f"✅ Đã ghi nhận báo cáo đối với {member.display_name}. Hệ thống sẽ sớm xử lý!", delete_after=5)
     else:
-        await ctx.send("❌ Lỗi hệ thống: Không tìm thấy kênh Report!", delete_after=5)
+        await ctx.send("❌ Lỗi hệ thống: Không tìm thấy kênh Report! (Vui lòng kiểm tra lại quyền của Bot)", delete_after=5)
 
 @bot.command()
 async def duyet(ctx, *, yeu_cau: str = None):
@@ -286,9 +287,9 @@ async def duyet(ctx, *, yeu_cau: str = None):
     embed.add_field(name="Người gửi", value=ctx.author.mention, inline=True)
     embed.add_field(name="Yêu cầu", value=yeu_cau.title(), inline=True)
     embed.add_field(name="Loại thưởng", value=reward_name, inline=True)
-    embed.add_field(name="Phần thưởng", value=reward_value, inline=False)
+    embed.add_field(name="Phần thưởng dự kiến", value=reward_value, inline=False)
     embed.set_image(url=attachment_url)
-    embed.add_field(name="Bằng Chứng video/ảnh", value=attachment_url, inline=False)
+    embed.add_field(name="Link File/Video", value=attachment_url, inline=False)
 
     view = ReviewView(ctx.author.id, req_type, yeu_cau, reward_id)
     await admin_channel.send(embed=embed, view=view)
@@ -328,4 +329,4 @@ async def bxh(ctx):
 
 keep_alive()  
 bot.run(os.getenv('DISCORD_TOKEN'))
-        
+    
