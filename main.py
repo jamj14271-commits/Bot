@@ -48,6 +48,31 @@ async def on_ready():
     db = db_client['gd_database']
     print(f'Bot {bot.user} đã sẵn sàng hoạt động!')
 
+# ================= ANTI-SPAM (BẢO VỆ SERVER) ================= #
+@bot.event
+async def on_message(message):
+    # Bỏ qua tin nhắn do chính bot gửi
+    if message.author == bot.user:
+        return
+
+    # Danh sách các từ khóa hoặc link cấm (Bạn có thể thêm bớt tùy ý)
+    bad_words = ["discord.gg/", "free nitro", "hack gem", "giftcode", "hack blox"]
+    
+    content_lower = message.content.lower()
+    
+    # Kiểm tra xem tin nhắn có chứa từ cấm không
+    for word in bad_words:
+        if word in content_lower:
+            try:
+                await message.delete()
+                await message.channel.send(f"⚠️ {message.author.mention}, bạn không được gửi link lạ hoặc từ ngữ vi phạm vào server!", delete_after=5)
+                return 
+            except discord.Forbidden:
+                pass
+
+    # QUAN TRỌNG: Phải có dòng này thì các lệnh khác mới hoạt động được
+    await bot.process_commands(message)
+
 # Các hàm hỗ trợ Database
 async def get_user_mp(user_id):
     user = await db.users.find_one({"_id": user_id})
@@ -126,6 +151,39 @@ class ReviewView(View):
         await interaction.response.send_modal(modal)
 
 # ================= CÁC LỆNH BOT (COMMANDS) ================= #
+
+@bot.command(name="report")
+async def report_user(ctx, member: discord.Member = None, *, reason: str = None):
+    # Bước 1: Lập tức xóa tin nhắn gốc để bảo mật và giữ kênh sạch sẽ
+    try:
+        await ctx.message.delete()
+    except discord.Forbidden:
+        pass 
+
+    # Kiểm tra cú pháp
+    if not member or not reason:
+        await ctx.send("❌ Sai cú pháp! Dùng: `!report @tên_người_chơi lý do kèm bằng chứng`", delete_after=5)
+        return
+
+    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
+    if admin_channel:
+        embed = discord.Embed(title="🚨 BÁO CÁO VI PHẠM MỚI 🚨", color=discord.Color.red(), timestamp=ctx.message.created_at)
+        embed.add_field(name="Kẻ bị tố cáo:", value=member.mention, inline=False)
+        embed.add_field(name="Lý do & Bằng chứng:", value=reason, inline=False)
+        embed.add_field(name="Người tố cáo:", value=ctx.author.mention, inline=False)
+
+        # Xử lý lấy ảnh/video đính kèm (nếu có)
+        files = []
+        if ctx.message.attachments:
+            for attachment in ctx.message.attachments:
+                files.append(await attachment.to_file())
+
+        await admin_channel.send(embed=embed, files=files)
+        
+        # Báo cáo riêng bằng tin nhắn tự hủy
+        await ctx.send(f"✅ Đã ghi nhận báo cáo đối với {member.display_name}. Hệ thống sẽ sớm xử lý!", delete_after=5)
+    else:
+        await ctx.send("❌ Lỗi hệ thống: Không tìm thấy kênh Admin!", delete_after=5)
 
 @bot.command()
 async def duyet(ctx, *, yeu_cau: str = None):
