@@ -231,11 +231,7 @@ class ReviewView(View):
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         modal = RejectModal(self.user_id, interaction.message)
         await interaction.response.send_modal(modal)
-
-# === HẾT PHẦN 1 - HÃY COPY TIẾP PHẦN 2 DƯỚI ĐÂY NỐI VÀO ===
-# === TIẾP TỤC PHẦN 2 - NỐI TIẾP VÀO ĐOẠN CUỐI CỦA PHẦN 1 ===
-
-# ================= CÁC LỆNH BOT (COMMANDS) ================= #
+        # ================= CÁC LỆNH BOT (COMMANDS) ================= #
 
 @bot.command()
 async def menu(ctx):
@@ -370,7 +366,9 @@ async def duyet(ctx, *, yeu_cau: str = None):
     await admin_channel.send(embed=embed, view=view)
     await ctx.send("✅ Đã gửi yêu cầu và video cho Admin kiểm tra. Bạn chờ kết quả nhé!")
 
+# ====== ĐÃ SỬA: MODEL FLASH-8B + COOLDOWN CHỐNG SPAM ====== #
 @bot.command()
+@commands.cooldown(1, 10, commands.BucketType.user)
 async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: str = None, *, ky_nang: str = None):
     if not all([do_kho, phan_loai, yeu_cau, ky_nang]):
         embed = discord.Embed(title="❌ Sai cú pháp lệnh Đề Xuất", color=discord.Color.red())
@@ -381,11 +379,10 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
     
     if GEMINI_API_KEY:
         try:
-            # FIX: Chuyển sang model cập nhật ổn định nhất
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # Gọi bản Flash-Lite 8B có giới hạn request cực cao
+            model = genai.GenerativeModel('gemini-1.5-flash-8b')
             prompt = f"Tôi đang chơi Geometry Dash. Hãy đề xuất cho tôi DUY NHẤT 1 level thuộc độ khó {do_kho} ở mức {phan_loai} của độ khó đó. Tôi muốn {yeu_cau} {ky_nang}. Trả lời thật ngắn gọn: Tên level, người tạo, ID (nếu có thể), và giải thích 2-3 câu tại sao nó hợp với tôi."
             
-            # FIX: Dùng hàm async để không làm treo bot khi API xử lý lâu
             response = await model.generate_content_async(prompt)
             
             embed = discord.Embed(title="🤖 Gemini Đề Xuất Cho Bạn", description=response.text, color=discord.Color.green())
@@ -395,9 +392,12 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
             
         except Exception as e:
             print(f"Lỗi Gemini API: {e}")
-            # In tạm thông báo lỗi thật ra chat để bạn dễ debug khi chạy thử nghiệm
-            await ctx.send(f"⚠️ Debug: Lỗi kết nối API Gemini: `{e}`. Đang chuyển sang thư viện cục bộ...", delete_after=7)
-            pass 
+            if "429" in str(e):
+                await status_msg.edit(content="⚠️ *Bot đang bị quá tải request từ Google. Vui lòng thử lại sau 1 phút nhé!*")
+                return
+            else:
+                await ctx.send(f"⚠️ Debug: Lỗi kết nối API Gemini: `{e}`. Đang chuyển sang thư viện cục bộ...", delete_after=7)
+                pass 
 
     try:
         with open("levels_fallback.json", "r", encoding="utf-8") as f:
@@ -424,6 +424,12 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
         if status_msg:
             await status_msg.delete()
         await ctx.send("❌ Hệ thống AI hiện không khả dụng và file dữ liệu dự phòng (`levels_fallback.json`) không tồn tại.")
+
+# ====== ĐÃ SỬA: HÀM BẮT LỖI COOLDOWN ====== #
+@dexuatlevel.error
+async def dexuatlevel_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"⏳ Đừng spam nhé! Hãy đợi **{int(error.retry_after)} giây** nữa mới được dùng lại lệnh này.", delete_after=5)
 
 @bot.command()
 async def bxh(ctx):
@@ -470,4 +476,3 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
-    
