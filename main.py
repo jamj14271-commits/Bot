@@ -10,6 +10,9 @@ from keep_alive import keep_alive
 # ID kênh duyệt bài của bạn
 ADMIN_CHANNEL_ID = 1525386498739015800  
 
+# ID kênh nhận Report gian lận (MỚI)
+REPORT_CHANNEL_ID = 1525494977554288732
+
 # Bảng Mp theo độ khó
 DIFFICULTY_MP = {
     "easy": 5, "normal": 10, "hard": 25, "harder": 50, "insane": 100,
@@ -165,8 +168,9 @@ async def report_user(ctx, member: discord.Member = None, *, reason: str = None)
         await ctx.send("❌ Sai cú pháp! Dùng: `!report @tên_người_chơi lý do kèm bằng chứng`", delete_after=5)
         return
 
-    admin_channel = bot.get_channel(ADMIN_CHANNEL_ID)
-    if admin_channel:
+    # SỬ DỤNG KÊNH REPORT ĐỂ NHẬN BÁO CÁO
+    report_channel = bot.get_channel(REPORT_CHANNEL_ID)
+    if report_channel:
         embed = discord.Embed(title="🚨 BÁO CÁO VI PHẠM MỚI 🚨", color=discord.Color.red(), timestamp=ctx.message.created_at)
         embed.add_field(name="Kẻ bị tố cáo:", value=member.mention, inline=False)
         embed.add_field(name="Lý do & Bằng chứng:", value=reason, inline=False)
@@ -178,12 +182,12 @@ async def report_user(ctx, member: discord.Member = None, *, reason: str = None)
             for attachment in ctx.message.attachments:
                 files.append(await attachment.to_file())
 
-        await admin_channel.send(embed=embed, files=files)
+        await report_channel.send(embed=embed, files=files)
         
         # Báo cáo riêng bằng tin nhắn tự hủy
         await ctx.send(f"✅ Đã ghi nhận báo cáo đối với {member.display_name}. Hệ thống sẽ sớm xử lý!", delete_after=5)
     else:
-        await ctx.send("❌ Lỗi hệ thống: Không tìm thấy kênh Admin!", delete_after=5)
+        await ctx.send("❌ Lỗi hệ thống: Không tìm thấy kênh Report!", delete_after=5)
 
 @bot.command()
 async def duyet(ctx, *, yeu_cau: str = None):
@@ -270,4 +274,3 @@ async def bxh(ctx):
 # ================= KHỞI CHẠY BOT (LUÔN DƯỚI CÙNG) ==================== #
 keep_alive()  # Kích hoạt trang web giả để đánh lừa Render giữ kết nối mở port 8080
 bot.run(os.getenv('DISCORD_TOKEN'))
-    
