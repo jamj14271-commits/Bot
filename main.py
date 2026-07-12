@@ -11,12 +11,12 @@ from keep_alive import keep_alive
 # ================= CẤU HÌNH CƠ BẢN ================= #
 ADMIN_CHANNEL_ID = 1525386498739015800  
 REPORT_CHANNEL_ID = 1525662263502176306
-WELCOME_CHANNEL_ID = 1525492114564317204  # Thay bằng ID kênh chào mừng của server bạn
+WELCOME_CHANNEL_ID = 1525492114564317204  
 
 DIFFICULTY_MP = {
     "easy": 5, "normal": 10, "hard": 25, "harder": 50, "insane": 100,
     "easy demon": 250, "medium demon": 500, "hard demon": 1000,
-    "insane demon": 5000, "extreme demon": 10000
+    "insane demon": 5000, "extreme": 10000
 }
 
 TITLES_DATA = {
@@ -231,7 +231,11 @@ class ReviewView(View):
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         modal = RejectModal(self.user_id, interaction.message)
         await interaction.response.send_modal(modal)
-        # ================= CÁC LỆNH BOT (COMMANDS) ================= #
+
+# === HẾT PHẦN 1 - HÃY COPY TIẾP PHẦN 2 DƯỚI ĐÂY NỐI VÀO ===
+# === TIẾP TỤC PHẦN 2 - NỐI TIẾP VÀO ĐOẠN CUỐI CỦA PHẦN 1 ===
+
+# ================= CÁC LỆNH BOT (COMMANDS) ================= #
 
 @bot.command()
 async def menu(ctx):
@@ -244,7 +248,7 @@ async def menu(ctx):
     )
     embed.add_field(
         name="2️⃣ Xin AI Đề xuất Level",
-        value="`!dexuatlevel [độ khó] [dễ/tầm trung/khó] [né/cần] [điểm yếu/mạnh]`\n*Ví dụ: `!dexuatlevel \"Hard Demon\" dễ cần \"luyện tập wave\"`*\n*(Mẹo: Dùng ngoặc kép `\" \"` nếu cụm từ có dấu cách)*",
+        value="`!dexuatlevel [độ khó] [dễ/tầm trung/khó] [né/cần] [kỹ năng]`\n*Ví dụ: `!dexuatlevel \"Hard Demon\" dễ cần \"luyện tập wave và ship\"`*\n*(Mẹo: Dùng ngoặc kép `\" \"` nếu cụm từ có dấu cách)*",
         inline=False
     )
     embed.add_field(
@@ -373,21 +377,26 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
         embed.description = "**Cách dùng đúng:**\n`!dexuatlevel [độ khó] [dễ/tầm trung/khó] [né/cần] [kỹ năng]`\n\n**Ví dụ:**\n`!dexuatlevel \"Hard Demon\" dễ cần \"luyện tập wave và ship\"`\n`!dexuatlevel \"Easy Demon\" khó né \"các đoạn memory dài\"`"
         return await ctx.send(embed=embed)
     
-    await ctx.send("⏳ *Đang phân tích dữ liệu và tìm level phù hợp cho bạn...*")
+    status_msg = await ctx.send("⏳ *Đang phân tích dữ liệu và tìm level phù hợp cho bạn...*")
     
     if GEMINI_API_KEY:
         try:
+            # FIX: Chuyển sang model cập nhật ổn định nhất
             model = genai.GenerativeModel('gemini-1.5-flash')
             prompt = f"Tôi đang chơi Geometry Dash. Hãy đề xuất cho tôi DUY NHẤT 1 level thuộc độ khó {do_kho} ở mức {phan_loai} của độ khó đó. Tôi muốn {yeu_cau} {ky_nang}. Trả lời thật ngắn gọn: Tên level, người tạo, ID (nếu có thể), và giải thích 2-3 câu tại sao nó hợp với tôi."
             
-            response = model.generate_content(prompt)
+            # FIX: Dùng hàm async để không làm treo bot khi API xử lý lâu
+            response = await model.generate_content_async(prompt)
             
             embed = discord.Embed(title="🤖 Gemini Đề Xuất Cho Bạn", description=response.text, color=discord.Color.green())
             embed.set_footer(text="Được tạo tự động bởi AI (Google Gemini)")
+            await status_msg.delete()
             return await ctx.send(embed=embed)
             
         except Exception as e:
             print(f"Lỗi Gemini API: {e}")
+            # In tạm thông báo lỗi thật ra chat để bạn dễ debug khi chạy thử nghiệm
+            await ctx.send(f"⚠️ Debug: Lỗi kết nối API Gemini: `{e}`. Đang chuyển sang thư viện cục bộ...", delete_after=7)
             pass 
 
     try:
@@ -400,6 +409,7 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
                 suggested_level = lvl
                 break
                 
+        await status_msg.delete()
         if suggested_level:
             embed = discord.Embed(title="📁 Đề Xuất Từ Thư Viện", color=discord.Color.orange())
             embed.add_field(name="Tên Level", value=f"**{suggested_level['name']}** by {suggested_level['creator']}", inline=False)
@@ -411,6 +421,8 @@ async def dexuatlevel(ctx, do_kho: str = None, phan_loai: str = None, yeu_cau: s
             await ctx.send("❌ Hiện tại AI đang quá tải và thư viện cục bộ chưa có level nào khớp hoàn toàn với yêu cầu của bạn. Hãy thử đổi từ khóa nhé!")
 
     except FileNotFoundError:
+        if status_msg:
+            await status_msg.delete()
         await ctx.send("❌ Hệ thống AI hiện không khả dụng và file dữ liệu dự phòng (`levels_fallback.json`) không tồn tại.")
 
 @bot.command()
@@ -451,13 +463,11 @@ async def bxh(ctx):
 
 # ================= CHẠY BOT ================= #
 if __name__ == "__main__":
-    # Kích hoạt web server để giữ bot online 24/7 (nếu bạn dùng Uptimerobot / Render)
     keep_alive() 
     
-    # Lấy token từ biến môi trường
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
         bot.run(TOKEN)
     else:
         print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
-            
+    
