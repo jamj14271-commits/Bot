@@ -13,7 +13,7 @@ REPORT_CHANNEL_ID = 1525662263502176306
 DIFFICULTY_MP = {
     "easy": 5, "normal": 10, "hard": 25, "harder": 50, "insane": 100,
     "easy demon": 250, "medium demon": 500, "hard demon": 1000,
-    "insane demon": 5000, "extreme": 10000
+    "insane demon": 5000, "extreme demon": 10000
 }
 
 TITLES_DATA = {
@@ -51,7 +51,7 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    bad_words = ["discord.gg/", "free nitro", "hack gem", "giftcode", "hack blox"]
+    bad_words = ["discord.gg/", "free nitro", "hack gem", "giftcode", "hack blox" , "gay" , "ngu"]
     content_lower = message.content.lower()
     
     for word in bad_words:
