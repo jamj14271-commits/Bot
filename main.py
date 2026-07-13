@@ -138,10 +138,25 @@ async def check_event_daily_validity():
     daily = settings.get("daily")
     event = settings.get("event")
     
-    daily_valid = daily if (daily and daily.get("expires") and now_ts < daily["expires"]) else None
-    event_valid = event if (event and event.get("expires") and now_ts < event["expires"]) else None
+    # Hàm con kiểm tra an toàn: Tự động xử lý nếu dính dữ liệu datetime cũ
+    def is_valid(data):
+        if not data or not data.get("expires"): return False
+        expires = data["expires"]
+        
+        # Nếu dữ liệu trong DB vẫn là datetime (cũ), tự động chuyển sang timestamp
+        if isinstance(expires, datetime):
+            # Nếu datetime cũ chưa có timezone (naive), ép về VN_TZ
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=VN_TZ)
+            expires = expires.timestamp()
+            
+        return now_ts < expires
+
+    daily_valid = daily if is_valid(daily) else None
+    event_valid = event if is_valid(event) else None
     
     return daily_valid, event_valid
+
 
 @bot.event
 async def on_member_join(member):
