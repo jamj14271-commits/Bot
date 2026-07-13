@@ -134,12 +134,13 @@ async def check_event_daily_validity():
     settings = await db.settings.find_one({"_id": "gd_events"})
     if not settings: return None, None
     
-    now = datetime.now(VN_TZ)
+    now_ts = datetime.now(VN_TZ).timestamp()
     daily = settings.get("daily")
     event = settings.get("event")
     
-    daily_valid = daily if (daily and daily.get("expires") and now < daily["expires"].replace(tzinfo=VN_TZ)) else None
-    event_valid = event if (event and event.get("expires") and now < event["expires"].replace(tzinfo=VN_TZ)) else None
+    daily_valid = daily if (daily and daily.get("expires") and now_ts < daily["expires"]) else None
+    event_valid = event if (event and event.get("expires") and now_ts < event["expires"]) else None
+    
     return daily_valid, event_valid
 
 @bot.event
@@ -167,7 +168,7 @@ async def on_message(message):
             return 
         except discord.Forbidden: pass
     await bot.process_commands(message)
-            # ================= GIAO DIỆN NÚT BẤM REPORT ================= #
+# ================= GIAO DIỆN NÚT BẤM REPORT ================= #
 class PunishmentModal(Modal):
     def __init__(self, action_type, reporter_id, reported_member, message_to_edit):
         titles = {"mute": "Khoá Chat", "ban": "Ban Khỏi Server", "deduct_mp": "Trừ MP"}
@@ -397,7 +398,7 @@ class ReviewView(View):
     @discord.ui.button(label="Từ chối", style=discord.ButtonStyle.red, custom_id="btn_reject")
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RejectModal(self.user_id, interaction.message, self.item_name))
-                    # ================= CÁC LỆNH BOT (COMMANDS) ================= #
+           # ================= CÁC LỆNH BOT (COMMANDS) ================= #
 @bot.command()
 async def menu(ctx):
     is_admin = ctx.author.guild_permissions.administrator
@@ -468,11 +469,14 @@ async def thongbao(ctx, type: str, level_id: str):
         return await ctx.send("❌ Loại thông báo phải là `event` hoặc `daily`.")
     
     now = datetime.now(VN_TZ)
-    expires = now + timedelta(days=14) if type == "event" else now.replace(hour=23, minute=59, second=59)
-    
+    if type == "event":
+        expires = now + timedelta(days=14)
+    else:
+        expires = now.replace(hour=23, minute=59, second=59)
+        
     await db.settings.update_one(
         {"_id": "gd_events"},
-        {"$set": {f"{type}": {"id": level_id, "expires": expires}}},
+        {"$set": {f"{type}": {"id": level_id, "expires": expires.timestamp()}}},
         upsert=True
     )
     
@@ -490,9 +494,11 @@ async def show_event(ctx):
     if not data:
         return await ctx.send(f"❌ Hiện tại chưa có level {cmd_used} nào hoặc đã hết hạn!")
     
+    expires_dt = datetime.fromtimestamp(data['expires'], VN_TZ)
+    
     embed = discord.Embed(title=f"🎯 MỤC TIÊU {cmd_used.upper()} HIỆN TẠI", color=discord.Color.green())
     embed.add_field(name="ID Level", value=f"**{data['id']}**", inline=False)
-    embed.add_field(name="Hết hạn", value=data['expires'].strftime("%d/%m/%Y %H:%M:%S (VN)"), inline=False)
+    embed.add_field(name="Hết hạn", value=expires_dt.strftime("%d/%m/%Y %H:%M:%S (VN)"), inline=False)
     await ctx.send(embed=embed)
 
 @bot.command()
@@ -536,7 +542,7 @@ async def duyet(ctx, *, yeu_cau: str = None):
     view = ReviewView(ctx.author.id, req_type, yeu_cau, reward_id)
     await admin_channel.send(embed=embed, view=view)
     await ctx.send("✅ Đã gửi bài của bạn cho Admin xét duyệt. Hãy kiên nhẫn chờ đợi nhé!")
-    # ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
+            # ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
 @bot.command()
 async def dexuatlevel(ctx, *args):
     await ctx.send("❌ **Tính năng AI gợi ý level (`!dexuatlevel`) hiện đang bị lỗi và được tạm thời vô hiệu hóa để bảo trì. Mong các bạn thông cảm và quay lại sau nhé!**")
@@ -662,3 +668,4 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
+    
