@@ -49,11 +49,12 @@ if GEMINI_API_KEY:
         temperature=0.6,
     )
     
-    model = genai.GenerativeModel(
-        model_name='gemini-1.5-flash',
+        model = genai.GenerativeModel(
+        model_name='gemini-1.5-flash-latest', # Dùng bản 'latest' để tránh lỗi 404
         system_instruction=gd_system_instruction,
         generation_config=generation_config
     )
+
 
 # ================= KHỞI TẠO BOT ==================== #
 intents = discord.Intents.default()
@@ -529,39 +530,34 @@ async def duyet(ctx, *, yeu_cau: str = None):
 @bot.command()
 async def dexuatlevel(ctx, *, trinh_do: str = None):
     if not trinh_do:
-        return await ctx.send("❌ Bạn chưa nhập yêu cầu! \nVD: `!dexuatlevel hard demon` hoặc `!dexuatlevel tìm map nhạc hay`")
+        return await ctx.send("❌ Bạn chưa nhập yêu cầu! VD: `!dexuatlevel hard demon`")
     
     if not GEMINI_API_KEY or model is None:
-        return await ctx.send("❌ Lỗi Server: Bot chưa nhận được API Key từ Render hoặc AI chưa khởi tạo thành công!")
+        return await ctx.send("❌ Bot chưa được cấu hình API Key AI!")
 
-    embed_loading = discord.Embed(
-        title="🤖 Hệ thống AI đang phân tích...",
-        description=f"Đang tiến hành lục tìm cơ sở dữ liệu các level phù hợp với: **{trinh_do}**.\nVui lòng chờ trong giây lát nhé ⏳",
-        color=discord.Color.blurple()
-    )
-    waiting_msg = await ctx.send(embed=embed_loading)
+    waiting_msg = await ctx.send("⏳ Đang phân tích dữ liệu...")
 
     try:
         user_mp = await get_user_mp(ctx.author.id)
-        prompt = f"Người dùng này đang có {user_mp} MP (điểm kinh nghiệm) trong hệ thống server Geometry Dash. Họ yêu cầu: '{trinh_do}'. Hãy phân tích mức MP và chuỗi yêu cầu này để đưa ra danh sách các level hợp lý nhất."
+        # Bổ sung context để AI hiểu rõ hơn
+        prompt = f"Người dùng có {user_mp} MP. Yêu cầu: '{trinh_do}'. Hãy gợi ý level phù hợp."
 
+        # Gọi AI với phương thức generate_content
         response = await model.generate_content_async(prompt)
         
-        if not response.text:
-            raise ValueError("Bộ lọc Google đã chặn nội dung phản hồi do chứa từ ngữ nhạy cảm.")
-
-        reply_text = response.text
-        if len(reply_text) > 4090: 
-            reply_text = reply_text[:4080] + "\n\n*(Nội dung đã tự động cắt ngắn do quá dài)*"
-
+        reply_text = response.text if response.text else "AI không đưa ra phản hồi."
+        
         embed_result = discord.Embed(
-            title=f"🎯 Đề xuất Level: {trinh_do.title()}",
-            description=reply_text,
+            title=f"🎯 Đề xuất: {trinh_do.title()}",
+            description=reply_text[:4000], # Giới hạn độ dài để không lỗi embed
             color=discord.Color.green()
         )
-        embed_result.set_footer(text=f"Yêu cầu bởi {ctx.author.display_name} | Đang có {user_mp} MP")
-        
         await waiting_msg.edit(embed=embed_result, content=None)
+
+    except Exception as e:
+        print(f"[LỖI AI]: {e}")
+        await waiting_msg.edit(content="❌ Có lỗi xảy ra khi kết nối với AI, vui lòng thử lại sau.")
+
 
     except Exception as e:
         print(f"[LỖI XỬ LÝ GEMINI]: {e}")
