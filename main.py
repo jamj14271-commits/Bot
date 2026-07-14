@@ -646,4 +646,4 @@ async def bxh(ctx):
     await ctx.send(embed=em)
 
 keep_alive()
-bot.run(os.getenv("TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
