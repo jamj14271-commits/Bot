@@ -21,25 +21,39 @@ DIFFICULTY_MP = {
     "daily": 150, "event": 2500
 }
 
-TITLES_DATA = {
-    "chiến binh try hard": 152548454364,
-    "chiến binh đã tốt nghiệp": 152548544903,
-    "pro": 152548997972,
-    "vua try hard": 152549103370,
-    "vua hardest": 152549140941,
-    "vua cày điểm": 152549739299
-}
+# Lưu trữ danh hiệu dưới dạng chuỗi (Vật phẩm ảo trong DB)
+TITLES_DATA = [
+    "chiến binh try hard", "chiến binh đã tốt nghiệp", "pro",
+    "vua try hard", "vua hardest", "vua cày điểm"
+]
 
-ROLE_VUA_CAY_DIEM = 152549739299
-ROLE_VUA_HARDEST = 152549140941
-ROLE_VUA_TRY_HARD = 152549103370
 VN_TZ = timezone(timedelta(hours=7))
 
 # ================= CẤU HÌNH GEMINI ================= #
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+model = None
+
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash') 
+    
+    gd_system_instruction = (
+        "Bạn là một chuyên gia uyên bác về tựa game Geometry Dash. Nhiệm vụ duy nhất của bạn là đề xuất các level phù hợp với trình độ người chơi yêu cầu.\n"
+        "Quy tắc bắt buộc:\n"
+        "1. Trả lời ngắn gọn, thân thiện.\n"
+        "2. Đề xuất từ 3 đến 5 level. Mỗi level phải ghi rõ: Tên level, Tác giả (Creator), Độ khó, ID level (nếu có), và một câu ngắn gọn lý do khuyên chơi.\n"
+        "3. Trình bày bằng cấu trúc markdown gọn gàng, đẹp mắt.\n"
+        "4. TỪ CHỐI TRẢ LỜI hoặc nhắc nhở khéo léo đối với mọi câu hỏi không liên quan đến Geometry Dash."
+    )
+    
+    generation_config = genai.types.GenerationConfig(
+        temperature=0.6,
+    )
+    
+    model = genai.GenerativeModel(
+        model_name='gemini-1.5-flash',
+        system_instruction=gd_system_instruction,
+        generation_config=generation_config
+    )
 
 # ================= KHỞI TẠO BOT ==================== #
 intents = discord.Intents.default()
@@ -57,8 +71,7 @@ async def on_ready():
     db_client = motor.motor_asyncio.AsyncIOMotorClient(mongo_uri, tlsCAFile=certifi.where())
     db = db_client['gd_database']
     print(f'Bot {bot.user} đã sẵn sàng hoạt động!')
-
-# ================= CÁC HÀM TIỆN ÍCH & LOGIC ================= #
+    # ================= CÁC HÀM TIỆN ÍCH & LOGIC ================= #
 async def get_user_mp(user_id):
     user = await db.users.find_one({"_id": user_id})
     return user["mp"] if user else 0
@@ -77,57 +90,30 @@ async def check_and_transfer_top1_mp(guild):
     old_top1_id = config["user_id"] if config else None
 
     if old_top1_id != new_top1_id:
-        role = guild.get_role(ROLE_VUA_CAY_DIEM)
-        if role:
-            if old_top1_id:
-                old_member = guild.get_member(old_top1_id)
-                if old_member:
-                    await old_member.remove_roles(role)
-                    await db.users.update_one({"_id": old_top1_id}, {"$pull": {"titles": "vua cày điểm"}})
-            
-            new_member = guild.get_member(new_top1_id)
-            if new_member:
-                await new_member.add_roles(role)
-                await db.users.update_one({"_id": new_top1_id}, {"$addToSet": {"titles": "vua cày điểm"}, "$set": {"active_title": "vua cày điểm"}}, upsert=True)
+        if old_top1_id:
+            await db.users.update_one({"_id": old_top1_id}, {"$pull": {"titles": "vua cày điểm"}})
         
+        await db.users.update_one({"_id": new_top1_id}, {"$addToSet": {"titles": "vua cày điểm"}, "$set": {"active_title": "vua cày điểm"}}, upsert=True)
         await db.settings.update_one({"_id": "top1_mp_owner"}, {"$set": {"user_id": new_top1_id}}, upsert=True)
 
 async def grant_vua_hardest(guild, new_owner_id):
     config = await db.settings.find_one({"_id": "vua_hardest_owner"})
     old_owner_id = config["user_id"] if config else None
 
-    role = guild.get_role(ROLE_VUA_HARDEST)
-    if role:
-        if old_owner_id and old_owner_id != new_owner_id:
-            old_member = guild.get_member(old_owner_id)
-            if old_member:
-                await old_member.remove_roles(role)
-                await db.users.update_one({"_id": old_owner_id}, {"$pull": {"titles": "vua hardest"}})
+    if old_owner_id and old_owner_id != new_owner_id:
+        await db.users.update_one({"_id": old_owner_id}, {"$pull": {"titles": "vua hardest"}})
         
-        new_member = guild.get_member(new_owner_id)
-        if new_member:
-            await new_member.add_roles(role)
-            await db.users.update_one({"_id": new_owner_id}, {"$addToSet": {"titles": "vua hardest"}, "$set": {"active_title": "vua hardest"}}, upsert=True)
-    
+    await db.users.update_one({"_id": new_owner_id}, {"$addToSet": {"titles": "vua hardest"}, "$set": {"active_title": "vua hardest"}}, upsert=True)
     await db.settings.update_one({"_id": "vua_hardest_owner"}, {"$set": {"user_id": new_owner_id}}, upsert=True)
 
 async def grant_vua_try_hard(guild, new_owner_id):
     config = await db.settings.find_one({"_id": "vua_try_hard_owner"})
     old_owner_id = config["user_id"] if config else None
 
-    role = guild.get_role(ROLE_VUA_TRY_HARD)
-    if role:
-        if old_owner_id and old_owner_id != new_owner_id:
-            old_member = guild.get_member(old_owner_id)
-            if old_member:
-                await old_member.remove_roles(role)
-                await db.users.update_one({"_id": old_owner_id}, {"$pull": {"titles": "vua try hard"}})
+    if old_owner_id and old_owner_id != new_owner_id:
+        await db.users.update_one({"_id": old_owner_id}, {"$pull": {"titles": "vua try hard"}})
         
-        new_member = guild.get_member(new_owner_id)
-        if new_member:
-            await new_member.add_roles(role)
-            await db.users.update_one({"_id": new_owner_id}, {"$addToSet": {"titles": "vua try hard"}, "$set": {"active_title": "vua try hard"}}, upsert=True)
-    
+    await db.users.update_one({"_id": new_owner_id}, {"$addToSet": {"titles": "vua try hard"}, "$set": {"active_title": "vua try hard"}}, upsert=True)
     await db.settings.update_one({"_id": "vua_try_hard_owner"}, {"$set": {"user_id": new_owner_id}}, upsert=True)
 
 async def check_event_daily_validity():
@@ -138,14 +124,11 @@ async def check_event_daily_validity():
     daily = settings.get("daily")
     event = settings.get("event")
     
-    # Hàm con kiểm tra an toàn: Tự động xử lý nếu dính dữ liệu datetime cũ
     def is_valid(data):
         if not data or not data.get("expires"): return False
         expires = data["expires"]
         
-        # Nếu dữ liệu trong DB vẫn là datetime (cũ), tự động chuyển sang timestamp
         if isinstance(expires, datetime):
-            # Nếu datetime cũ chưa có timezone (naive), ép về VN_TZ
             if expires.tzinfo is None:
                 expires = expires.replace(tzinfo=VN_TZ)
             expires = expires.timestamp()
@@ -156,7 +139,6 @@ async def check_event_daily_validity():
     event_valid = event if is_valid(event) else None
     
     return daily_valid, event_valid
-
 
 @bot.event
 async def on_member_join(member):
@@ -183,6 +165,8 @@ async def on_message(message):
             return 
         except discord.Forbidden: pass
     await bot.process_commands(message)
+
+
 # ================= GIAO DIỆN NÚT BẤM REPORT ================= #
 class PunishmentModal(Modal):
     def __init__(self, action_type, reporter_id, reported_member, message_to_edit):
@@ -341,7 +325,6 @@ class ReviewView(View):
     async def approve_btn(self, interaction: discord.Interaction, button: Button):
         user = await bot.fetch_user(self.user_id)
         guild = interaction.guild
-        member = guild.get_member(self.user_id)
         msg_user, msg_admin = "", ""
 
         if self.req_type == "mp":
@@ -349,22 +332,12 @@ class ReviewView(View):
             msg_user = f"🎉 Level **{self.item_name.title()}** đã được duyệt! +{self.reward_value} MP!"
             msg_admin = f"✅ Đã duyệt +{self.reward_value} MP cho <@{self.user_id}>."
             
-            # --- TỰ ĐỘNG CẤP DANH HIỆU DỰA TRÊN ĐỘ KHÓ DEMON ---
             auto_title = None
-            if self.item_name == "easy demon":
-                auto_title = "chiến binh try hard"
-            elif self.item_name == "medium demon":
-                auto_title = "chiến binh đã tốt nghiệp"
-            elif self.item_name == "hard demon":
-                auto_title = "pro"
+            if self.item_name == "easy demon": auto_title = "chiến binh try hard"
+            elif self.item_name == "medium demon": auto_title = "chiến binh đã tốt nghiệp"
+            elif self.item_name == "hard demon": auto_title = "pro"
                 
             if auto_title:
-                role_id = TITLES_DATA.get(auto_title)
-                role = guild.get_role(role_id)
-                if role and member:
-                    try: await member.add_roles(role)
-                    except discord.Forbidden: pass
-                
                 await db.users.update_one(
                     {"_id": self.user_id}, 
                     {"$addToSet": {"titles": auto_title}, "$set": {"active_title": auto_title}}, 
@@ -372,7 +345,6 @@ class ReviewView(View):
                 )
                 msg_user += f"\n🎖️ Hệ thống tự động thêm danh hiệu **{auto_title.title()}** vào tủ đồ của bạn!"
                 msg_admin += f"\n🎖️ Đã tự động cấp danh hiệu **{auto_title.title()}** thành công."
-            # ----------------------------------------------------
             
         elif self.req_type == "role":
             role_name = self.item_name.lower()
@@ -397,12 +369,9 @@ class ReviewView(View):
                     msg_admin = f"✅ Đã duyệt bài (Chuỗi {streak}/5 Vua Try Hard) cho <@{self.user_id}>."
                     
             else:
-                role = guild.get_role(self.reward_value)
-                if role and member:
-                    await member.add_roles(role)
-                    await db.users.update_one({"_id": self.user_id}, {"$addToSet": {"titles": role_name}, "$set": {"active_title": role_name}}, upsert=True)
-                    msg_user = f"🏆 Đỉnh quá! Bạn nhận được danh hiệu **{role.name}**!"
-                    msg_admin = f"✅ Đã duyệt danh hiệu **{role.name}** cho <@{self.user_id}>."
+                await db.users.update_one({"_id": self.user_id}, {"$addToSet": {"titles": role_name}, "$set": {"active_title": role_name}}, upsert=True)
+                msg_user = f"🏆 Đỉnh quá! Bạn nhận được danh hiệu **{role_name.title()}**!"
+                msg_admin = f"✅ Đã duyệt danh hiệu **{role_name.title()}** cho <@{self.user_id}>."
 
         if user and msg_user:
             try: await user.send(msg_user)
@@ -413,7 +382,10 @@ class ReviewView(View):
     @discord.ui.button(label="Từ chối", style=discord.ButtonStyle.red, custom_id="btn_reject")
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RejectModal(self.user_id, interaction.message, self.item_name))
-           # ================= CÁC LỆNH BOT (COMMANDS) ================= #
+
+
+
+# ================= CÁC LỆNH BOT (COMMANDS) ================= #
 @bot.command()
 async def menu(ctx):
     is_admin = ctx.author.guild_permissions.administrator
@@ -423,7 +395,6 @@ async def menu(ctx):
         color=discord.Color.blurple()
     )
     
-    # 1. Hệ thống duyệt bài & Cày MP
     embed.add_field(
         name="💎 1. HỆ THỐNG DUYỆT BÀI & ĐIỂM MP", 
         value="• `!duyet [độ khó/event/daily/danh hiệu]`\n"
@@ -432,7 +403,6 @@ async def menu(ctx):
         inline=False
     )
     
-    # 2. Danh hiệu Tự động & Tối thượng
     embed.add_field(
         name="🎖️ 2. HỆ THỐNG DANH HIỆU DEMON (Tự động nhận)", 
         value="• Duyệt **Easy Demon** ➔ Nhận ngay `Chiến Binh Try Hard`\n"
@@ -449,7 +419,6 @@ async def menu(ctx):
         inline=False
     )
     
-    # 3. Quản lý Tủ đồ & Danh hiệu cá nhân
     embed.add_field(
         name="🎒 4. QUẢN LÝ DANH HIỆU CÁ NHÂN", 
         value="• `!listdanhhieu`: Xem danh hiệu bạn đang cất trong tủ.\n"
@@ -458,12 +427,10 @@ async def menu(ctx):
         inline=False
     )
 
-    # 4. Tiện ích: Sự kiện, AI, Báo cáo
     embed.add_field(name="🎯 Sự kiện GD", value="`!daily` hoặc `!event`\nXem mục tiêu để cày thêm MP.", inline=True)
-    embed.add_field(name="🤖 AI Gợi ý (⚠️ ĐANG LỖI)", value="`!dexuatlevel` hiện đang bảo trì và tạm thời không thể sử dụng.", inline=True)
+    embed.add_field(name="🤖 AI Gợi ý Level", value="`!dexuatlevel [yêu cầu]`\nTự động đọc dữ liệu MP để gợi ý Map phù hợp.", inline=True)
     embed.add_field(name="🚨 Tố cáo vi phạm", value="`!report @user [lý do]`\nKèm theo ảnh bằng chứng.", inline=True)
     
-    # 5. Khu vực cho Admin
     if is_admin:
         embed.add_field(
             name="🛠️ 5. LỆNH DÀNH CHO ADMIN", 
@@ -541,7 +508,7 @@ async def duyet(ctx, *, yeu_cau: str = None):
 
     if is_role:
         embed = discord.Embed(title="⭐ YÊU CẦU DUYỆT DANH HIỆU", color=discord.Color.gold())
-        req_type, reward_name, reward_value, reward_id = "role", "Danh hiệu", yeu_cau.title(), TITLES_DATA[yeu_cau]
+        req_type, reward_name, reward_value, reward_id = "role", "Danh hiệu", yeu_cau.title(), yeu_cau.title()
     else:
         embed = discord.Embed(title="💎 YÊU CẦU DUYỆT ĐIỂM MP", color=discord.Color.blue())
         req_type, reward_name, reward_value, reward_id = "mp", "Điểm MP", f"+{DIFFICULTY_MP[yeu_cau]} MP", DIFFICULTY_MP[yeu_cau]
@@ -557,10 +524,55 @@ async def duyet(ctx, *, yeu_cau: str = None):
     view = ReviewView(ctx.author.id, req_type, yeu_cau, reward_id)
     await admin_channel.send(embed=embed, view=view)
     await ctx.send("✅ Đã gửi bài của bạn cho Admin xét duyệt. Hãy kiên nhẫn chờ đợi nhé!")
-            # ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
+
+# ====== LỆNH AI GEMINI ĐỀ XUẤT ====== #
 @bot.command()
-async def dexuatlevel(ctx, *args):
-    await ctx.send("❌ **Tính năng AI gợi ý level (`!dexuatlevel`) hiện đang bị lỗi và được tạm thời vô hiệu hóa để bảo trì. Mong các bạn thông cảm và quay lại sau nhé!**")
+async def dexuatlevel(ctx, *, trinh_do: str = None):
+    if not trinh_do:
+        return await ctx.send("❌ Bạn chưa nhập yêu cầu! \nVD: `!dexuatlevel hard demon` hoặc `!dexuatlevel tìm map nhạc hay`")
+    
+    if not GEMINI_API_KEY or model is None:
+        return await ctx.send("❌ Lỗi Server: Bot chưa nhận được API Key từ Render hoặc AI chưa khởi tạo thành công!")
+
+    embed_loading = discord.Embed(
+        title="🤖 Hệ thống AI đang phân tích...",
+        description=f"Đang tiến hành lục tìm cơ sở dữ liệu các level phù hợp với: **{trinh_do}**.\nVui lòng chờ trong giây lát nhé ⏳",
+        color=discord.Color.blurple()
+    )
+    waiting_msg = await ctx.send(embed=embed_loading)
+
+    try:
+        user_mp = await get_user_mp(ctx.author.id)
+        prompt = f"Người dùng này đang có {user_mp} MP (điểm kinh nghiệm) trong hệ thống server Geometry Dash. Họ yêu cầu: '{trinh_do}'. Hãy phân tích mức MP và chuỗi yêu cầu này để đưa ra danh sách các level hợp lý nhất."
+
+        response = await model.generate_content_async(prompt)
+        
+        if not response.text:
+            raise ValueError("Bộ lọc Google đã chặn nội dung phản hồi do chứa từ ngữ nhạy cảm.")
+
+        reply_text = response.text
+        if len(reply_text) > 4090: 
+            reply_text = reply_text[:4080] + "\n\n*(Nội dung đã tự động cắt ngắn do quá dài)*"
+
+        embed_result = discord.Embed(
+            title=f"🎯 Đề xuất Level: {trinh_do.title()}",
+            description=reply_text,
+            color=discord.Color.green()
+        )
+        embed_result.set_footer(text=f"Yêu cầu bởi {ctx.author.display_name} | Đang có {user_mp} MP")
+        
+        await waiting_msg.edit(embed=embed_result, content=None)
+
+    except Exception as e:
+        print(f"[LỖI XỬ LÝ GEMINI]: {e}")
+        embed_error = discord.Embed(
+            title="❌ Gặp sự cố kết nối AI",
+            description=f"Không thể giao tiếp với máy chủ AI Gemini hoặc hệ thống đang quá tải. Vui lòng thử lại sau.\n\n**Mã lỗi chi tiết:**\n```\n{str(e)[:450]}\n```",
+            color=discord.Color.red()
+        )
+        await waiting_msg.edit(embed=embed_error, content=None)
+    
+
 
 # ====== LỆNH QUẢN LÝ DANH HIỆU ====== #
 @bot.command()
@@ -623,40 +635,29 @@ async def bxh(ctx):
         name = member.display_name if member else f"ID: {u['_id']}"
         mp = u.get("mp", 0)
         
-        # ================= TỰ ĐỘNG HIỆN COMBO DANH HIỆU TOP 1 ================= #
         title_decor = ""
-        if u.get("title_visible", True):
-            user_titles = u.get("titles", [])
-            top_titles_held = []
+        if u.get("title_visible", True) and u.get("active_title"):
+            title_decor = f" | ✦ {u['active_title'].title()} ✦"
             
-            if "vua cày điểm" in user_titles: top_titles_held.append("Vua Cày Điểm")
-            if "vua hardest" in user_titles: top_titles_held.append("Vua Hardest")
-            if "vua try hard" in user_titles: top_titles_held.append("Vua Try Hard")
-
-            if len(top_titles_held) == 3:
-                title_decor = f" | 🌟【THẦN ĐỒNG SERVER: {' ⚔️ '.join(top_titles_held)}】🌟"
-            elif len(top_titles_held) == 2:
-                title_decor = f" | 🌌【ĐỘC TÔN: {' ⚔️ '.join(top_titles_held)}】🌌"
-            elif len(top_titles_held) == 1:
-                if "Vua Cày Điểm" in top_titles_held: title_decor = " | 👑【Vua Cày Điểm】👑"
-                elif "Vua Hardest" in top_titles_held: title_decor = " | 🏆【Vua Hardest】🏆"
-                elif "Vua Try Hard" in top_titles_held: title_decor = " | 🔥【Vua Try Hard】🔥"
-            elif u.get("active_title"):
-                title_decor = f" | ✧༺ {u['active_title'].title()} ༻✧"
-        # ======================================================================= #
-            
-        text = f"**{name}** - {mp} MP {title_decor}"
-        
-        if mp >= 100000: rankings["a_than"].append(text)
-        elif mp >= 50000: rankings["god"].append(text)
-        elif mp >= 10000: rankings["pro"].append(text)
-        else: rankings["thuong"].append(text)
+        if mp >= 100000:
+            rankings["a_than"].append(f"\u001b[1;31m{name}\u001b[0m - {mp} MP{title_decor}")
+        elif mp >= 50000:
+            rankings["god"].append(f"\u001b[1;35m{name}\u001b[0m - {mp} MP{title_decor}")
+        elif mp >= 10000:
+            rankings["pro"].append(f"\u001b[1;36m{name}\u001b[0m - {mp} MP{title_decor}")
+        else:
+            rankings["thuong"].append(f"\u001b[1;32m{name}\u001b[0m - {mp} MP{title_decor}")
 
     embed = discord.Embed(title="🏆 BẢNG XẾP HẠNG MP SERVER 🏆", color=discord.Color.gold())
-    if rankings["a_than"]: embed.add_field(name="👑 Á Thần (100k+ MP)", value="\n".join(rankings["a_than"]), inline=False)
-    if rankings["god"]: embed.add_field(name="⚡ God (50k - 99k MP)", value="\n".join(rankings["god"]), inline=False)
-    if rankings["pro"]: embed.add_field(name="⚔️ Pro (10k - 49k MP)", value="\n".join(rankings["pro"]), inline=False)
-    if rankings["thuong"]: embed.add_field(name="🌱 Thường (< 10k MP)", value="\n".join(rankings["thuong"]), inline=False)
+    
+    if rankings["a_than"]: 
+        embed.add_field(name="👑 Á Thần (100k+ MP)", value="```ansi\n" + "\n".join(rankings["a_than"]) + "\n```", inline=False)
+    if rankings["god"]: 
+        embed.add_field(name="⚡ God (50k - 99k MP)", value="```ansi\n" + "\n".join(rankings["god"]) + "\n```", inline=False)
+    if rankings["pro"]: 
+        embed.add_field(name="⚔️ Pro (10k - 49k MP)", value="```ansi\n" + "\n".join(rankings["pro"]) + "\n```", inline=False)
+    if rankings["thuong"]: 
+        embed.add_field(name="🌱 Thường (< 10k MP)", value="```ansi\n" + "\n".join(rankings["thuong"]) + "\n```", inline=False)
 
     await ctx.send(embed=embed)
 
@@ -683,4 +684,6 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("Lỗi: Không tìm thấy DISCORD_TOKEN trong biến môi trường!")
-    
+        
+
+
