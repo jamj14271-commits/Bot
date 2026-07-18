@@ -582,6 +582,7 @@ async def xoanhunguoichoi(ctx, member_id: int):
     result = await db.users.delete_one({"_id": member_id})
     if result.deleted_count > 0: await ctx.send(f"✅ Đã xóa thành công dữ liệu của người dùng có ID `{member_id}` khỏi hệ thống.")
     else: await ctx.send(f"❌ Không tìm thấy dữ liệu người dùng có ID `{member_id}` trong database.")
-        keep_alive()
+        
+keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
     
