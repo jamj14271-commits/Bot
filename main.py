@@ -645,5 +645,16 @@ async def bxh(ctx):
     if rank["thuong"]: em.add_field(name="👤 Thành viên thường (Dưới 10.000 MP)", value="\n".join(rank["thuong"]), inline=False)
     await ctx.send(embed=em)
 
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def xoanhunguoichoi(ctx, member_id: int):
+    """Lệnh để xóa dữ liệu người dùng khỏi database bằng ID"""
+    result = await db.users.delete_one({"_id": member_id})
+    
+    if result.deleted_count > 0:
+        await ctx.send(f"✅ Đã xóa thành công dữ liệu của người dùng có ID `{member_id}` khỏi hệ thống.")
+    else:
+        await ctx.send(f"❌ Không tìm thấy dữ liệu người dùng có ID `{member_id}` trong database.")
+        
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
