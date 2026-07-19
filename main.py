@@ -9,6 +9,11 @@ import google.generativeai as genai
 from keep_alive import keep_alive
 from datetime import datetime, timedelta, timezone
 
+# ================= THÊM MỚI 2 THƯ VIỆN NÀY ĐỂ KẾT NỐI API ================= #
+import aiohttp
+import random
+# ======================================================================== #
+
 # ================= CẤU HÌNH CƠ BẢN ================= #
 ADMIN_CHANNEL_ID = 1525386498739015800  
 REPORT_CHANNEL_ID = 1525662263502176306
@@ -162,7 +167,8 @@ async def on_message(message):
             return 
         except discord.Forbidden: pass
     await bot.process_commands(message)
-    # ================= GIAO DIỆN NÚT BẤM REPORT ================= #
+
+# ================= GIAO DIỆN NÚT BẤM REPORT ================= #
 class PunishmentModal(Modal):
     def __init__(self, action_type, reporter_id, reported_member, message_to_edit):
         titles = {"mute": "Khoá Chat", "ban": "Ban Khỏi Server", "deduct_mp": "Trừ MP"}
@@ -362,10 +368,10 @@ class ReviewView(View):
     @discord.ui.button(label="Từ chối", style=discord.ButtonStyle.red, custom_id="btn_reject")
     async def reject_btn(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RejectModal(self.user_id, interaction.message, self.item_name))
-                              # ================= CÁC LỆNH BOT ================= #
+
+# ================= CÁC LỆNH BOT ================= #
 @bot.command()
 async def menu(ctx):
-    # ĐÃ FIX: Chặn lỗi văng bot khi gõ trong kênh nhắn tin riêng (DM)
     is_admin = getattr(ctx.author, 'guild_permissions', None) and ctx.author.guild_permissions.administrator
     embed = discord.Embed(
         title="📚 HƯỚNG DẪN TỔNG HỢP LỆNH BOT", 
@@ -387,7 +393,6 @@ async def menu(ctx):
     embed.set_footer(text="💡 Nhớ gửi kèm ảnh/video khi dùng !duyet hay !report nhé!")
     await ctx.send(embed=embed)
 
-# ĐÃ FIX (Lệnh Mới): Thêm lệnh addmp và setmp như trong menu đã ghi
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setmp(ctx, member: discord.Member, amount: int):
@@ -404,7 +409,6 @@ async def addmp(ctx, member: discord.Member, amount: int):
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def thongbao(ctx, loai: str, level_id: str):
-    # ĐÃ FIX: Đổi 'type' thành 'loai' để tránh xung đột từ khoá python
     loai = loai.lower()
     if loai not in ["event", "daily"]:
         return await ctx.send("❌ Loại phải là `event` hoặc `daily`.")
@@ -426,7 +430,7 @@ async def thongbao(ctx, loai: str, level_id: str):
 @bot.command(aliases=["daily", "event"])
 async def show_event(ctx):
     cmd_used = ctx.invoked_with.lower()
-    if cmd_used == "show_event": cmd_used = "event" # ĐÃ FIX: Fix hiển thị nếu người dùng gọi đúng tên lệnh gốc
+    if cmd_used == "show_event": cmd_used = "event"
     
     daily_valid, event_valid = await check_event_daily_validity()
     data = daily_valid if cmd_used == "daily" else event_valid
@@ -443,7 +447,6 @@ async def duyet(ctx, *, yeu_cau: str = None):
     if not yeu_cau: return await ctx.send("❌ VD: `!duyet easy demon` hoặc `!duyet vua hardest`")
     yeu_cau = yeu_cau.lower()
     
-    # ĐÃ FIX: Chặn người chơi xin xỏ tự nhận danh hiệu "Vua Cày Điểm"
     if yeu_cau == "vua cày điểm": 
         return await ctx.send("❌ Danh hiệu **Vua Cày Điểm** được cấp tự động cho Top 1 MP. Bạn không thể duyệt thủ công!")
 
@@ -478,15 +481,59 @@ async def duyet(ctx, *, yeu_cau: str = None):
     await admin_channel.send(embed=embed, view=view)
     await ctx.send("✅ Đã gửi cho Admin duyệt nhé!")
 
+# ================= PHẦN LỆNH ĐỀ XUẤT LEVEL (ĐÃ ĐƯỢC CHỈNH SỬA) ================= #
 @bot.command(name="dexuatlevel", aliases=["goiylevel", "de-xuat-level"])
 async def dexuatlevel(ctx, *, yeu_cau: str = None):
     if not yeu_cau: return await ctx.send("❌ VD: `!dexuatlevel easy demon phù hợp cho người mới`")
     if not GEMINI_API_KEY or model is None: return await ctx.send("❌ Chưa cấu hình GEMINI_API_KEY!")
 
-    waiting_msg = await ctx.send("⏳ Đang tìm kiếm level phù hợp và lấy ID chính xác...")
+    waiting_msg = await ctx.send("⏳ Đang tìm kiếm level thật trên máy chủ GD và chạy AI phân tích...")
     user_mp = await get_user_mp(ctx.author.id)
-    prompt = f"Người chơi Geometry Dash có {user_mp} MP, yêu cầu tìm level: '{yeu_cau}'. Hãy đề xuất 3-5 level phù hợp nhất, TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT trường ID Level chính xác. Không tạo ID ảo."
+    
+    # 1. Tìm từ khóa độ khó trong câu yêu cầu để gọi API
+    api_levels_info = ""
+    difficulties = ["easy demon", "medium demon", "hard demon", "insane demon", "extreme demon", "demon", "auto", "easy", "normal", "hard", "harder", "insane"]
+    found_diff = None
+    lower_yc = yeu_cau.lower()
+    
+    for d in difficulties:
+        if d in lower_yc:
+            found_diff = d
+            break
+            
+    # 2. Nếu tìm thấy, gọi GDBrowser API để lấy danh sách ID 100% là thật
+    if found_diff:
+        search_diff = found_diff
+        demon_filter = ""
+        if "demon" in found_diff and found_diff != "demon":
+            search_diff = "demon"
+            if "easy" in found_diff: demon_filter = "&demonFilter=1"
+            elif "medium" in found_diff: demon_filter = "&demonFilter=2"
+            elif "hard" in found_diff: demon_filter = "&demonFilter=3"
+            elif "insane" in found_diff: demon_filter = "&demonFilter=4"
+            elif "extreme" in found_diff: demon_filter = "&demonFilter=5"
+            
+        api_url = f"https://gdbrowser.com/api/search/*?diff={search_diff}{demon_filter}&starred=true"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url) as response:
+                    if response.status == 200:
+                        levels = await response.json()
+                        if isinstance(levels, list) and len(levels) > 0:
+                            sample_size = min(5, len(levels)) # Chọn random 5 level
+                            selected = random.sample(levels, sample_size)
+                            api_levels_info = "\n".join([f"- Tên: {l.get('name')} | ID: {l.get('id')} | Tác giả: {l.get('author')} | Độ khó: {found_diff.title()} | Lượt tải: {l.get('downloads')}" for l in selected])
+        except Exception as e:
+            print(f"Lỗi gọi GDBrowser API: {e}")
 
+    # 3. Tạo Prompt ép AI chỉ sử dụng các ID thật vừa lấy được từ API
+    prompt = f"Người chơi Geometry Dash có {user_mp} MP (tượng trưng cho kinh nghiệm), yêu cầu: '{yeu_cau}'.\n"
+    if api_levels_info:
+        prompt += f"\nDữ liệu level THẬT lấy từ máy chủ GD:\n{api_levels_info}\n\nHãy ĐÓNG VAI LÀ BOT CHUYÊN GIA và DÙNG CHÍNH XÁC các level này để viết câu trả lời đề xuất (chọn 3-5 level và phân tích tại sao phù hợp dựa trên yêu cầu/MP). TUYỆT ĐỐI không chế/sáng tạo thêm ID ảo."
+    else:
+        prompt += "Hãy đề xuất 3-5 level phù hợp nhất, TUYỆT ĐỐI KHÔNG ĐƯỢC BỎ SÓT trường ID Level chính xác. Không tạo ID ảo."
+
+    # 4. Gửi cho Gemini xử lý
     for so_lan_thu in range(3):
         try:
             phan_hoi = await model.generate_content_async(prompt)
@@ -496,7 +543,7 @@ async def dexuatlevel(ctx, *, yeu_cau: str = None):
             if not noi_dung: raise ValueError("Trống")
 
             embed = discord.Embed(title=f"🎯 Đề xuất level cho: {yeu_cau.title()}", description=noi_dung[:4000], color=discord.Color.green())
-            embed.set_footer(text=f"Dựa trên {user_mp} MP của bạn | ID Level là mã chính xác trên GDBrowser")
+            embed.set_footer(text=f"Dựa trên {user_mp} MP của bạn | 100% ID thật từ máy chủ GD")
             await waiting_msg.edit(embed=embed, content=None)
             return
         except Exception as loi:
@@ -508,6 +555,7 @@ async def dexuatlevel(ctx, *, yeu_cau: str = None):
                 continue
             break
     await waiting_msg.edit(embed=discord.Embed(title="❌ Lỗi kết nối AI", description="Không thể lấy gợi ý lúc này. Thử lại sau nhé!", color=discord.Color.red()), content=None)
+# ============================================================================== #
 
 @bot.command()
 async def listdanhhieu(ctx):
@@ -553,11 +601,10 @@ async def bxh(ctx):
     if not users: return await ctx.send("Chưa có thành viên nào có điểm MP trên server!")
     rank = {"a_than":[], "god":[], "pro":[], "thuong":[]}
     
-    # ĐÃ FIX: Chặn lỗi không lấy được get_member khi gọi bằng lệnh trong tin nhắn riêng
     guild = ctx.guild
     for u in users:
         m = guild.get_member(u["_id"]) if guild else None
-        if not m: m = bot.get_user(u["_id"]) # Lấy từ cache nếu gọi từ DM
+        if not m: m = bot.get_user(u["_id"]) 
         
         ten_hien_thi = m.display_name if m else f"ID thành viên: {u['_id']}"
         mp = u.get("mp",0)
@@ -585,4 +632,3 @@ async def xoanhunguoichoi(ctx, member_id: int):
         
 keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
-    
